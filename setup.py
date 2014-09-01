@@ -7,5 +7,5 @@ setup(name='sparkgram',
       author='Rok Roskar',
       author_email='rokroskar@gmail.com',
       url='http://github.com/rokroskar/sparkgram',
-      packages=['sparkgram', 'sparkgram/vectorizers'],
+      packages=['sparkgram'],
      )
