@@ -141,7 +141,8 @@ def ngram_hash_frequency(text, ngram_range=[1,1], stop_words = None, tokenizer =
 	d = defaultdict(int)
 
 	# count the occurences
-	for ngram in word_ngrams(alpha_tokenizer(text), ngram_range = ngram_range, stop_words = stop_words) :
+	for ngram in word_ngrams(alpha_tokenizer(text),
+													 ngram_range = ngram_range, stop_words = stop_words) :
 		d[(ngram,(mmh3.hash(ngram) & 0x7FFFFFFF) % feature_max)] += 1
 
 	# extract the results into a list of tuples and sort by feature index
