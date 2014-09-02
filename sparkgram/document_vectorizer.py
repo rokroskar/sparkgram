@@ -134,9 +134,10 @@ def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
 	d = defaultdict(int)
 
 	# count the occurences
-	for ngram in word_ngrams(alpha_tokenizer(text),
-													 ngram_range = ngram_range, stop_words = stop_words) :
-		d[(ngram,(mmh3.hash(ngram) & 0x7FFFFFFF) % feature_max)] += 1
+	for ngram in word_ngrams(alpha_tokenizer(text), 
+                             ngram_range = ngram_range, 
+                             stop_words = stop_words) :
+		d[ngram] += 1
 
 	# extract the results into a list of tuples and sort by feature index
 	vec = [(ngram,d[ngram]) for ngram in d.keys()]
@@ -362,13 +363,14 @@ class SparkDocumentVectorizer(object) :
 		"""
 
 		features_max = self._features_max
+
 		if self._docvec_rdd is None :
 			# The vectors are [[(metadata),[(ngram,ngram_ID),count],[...]]]
 			# We want to have [[(metadata),SparseVector[(ngram_ID,count),...]]], i.e.
 			# just IDs and counts, no ngram string
 			self._docvec_rdd = self.ngram_rdd.mapValues(
-														lambda x:
-															SparseVector(features_max,[(y[0][1],y[1]) for y in x]))
+                lambda x: SparseVector(
+                    features_max,[((mmh3.hash(y[0]) & 0x7FFFFFFF) % features_max, y[1]) for y in x]))
 
 		return self._docvec_rdd
 
