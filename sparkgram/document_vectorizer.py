@@ -63,8 +63,8 @@ def word_ngrams(tokens, ngram_range=[1,1], stop_words=None):
 	        yield " ".join(tokens[i: i+n])
 
 
-def ngram_frequency(vocab, text, ngram_range = [1,1],
-					stop_words = None, tokenier = alpha_tokenizer) :
+def ngram_vocab_frequency(vocab, text, ngram_range = [1,1],
+                          stop_words = None, tokenier = alpha_tokenizer) :
 	"""
 	Count the frequency of ngrams appearing in document ``text``
 	matched against the ngrams stored in ``vocab``
@@ -102,8 +102,8 @@ def ngram_frequency(vocab, text, ngram_range = [1,1],
 
 	return res
 
-def ngram_hash_frequency(text, ngram_range=[1,1], stop_words = None,
-												 tokenizer = alpha_tokenizer, feature_max = 2**32) :
+def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
+                    tokenizer = alpha_tokenizer, feature_max = 2**32) :
 	"""
 	Count the frequency of ngrams appearing in document ``text``
 	by using string hashes.
@@ -235,7 +235,7 @@ class SparkDocumentVectorizer(object) :
 		return self.docvec_rdd
 
 
-	def apply_filter(self, nmin = None, nmax = None) :
+	def apply_filter(self, nmin = None, nmax = None, filter_func = None) :
 		"""
 		Applies the filtering to ngram_rdd and regenerates the feature vectors
 		"""
@@ -245,17 +245,22 @@ class SparkDocumentVectorizer(object) :
 			nmax = self._nmax
 
 		# _filter_func should modify self._ngram_rdd
-		self._filter_func(nmin,nmax)
+		if filter_func is None : 
+			filter_func = self._filter_func
+
+		filter_func(nmin, nmax)
 
 		# docvec_rdd and vocab_rdd are both derived from ngram_rdd,
 		# so force reevaluation
 		del(self._docvec_rdd); self._docvec_rdd = None
 		del(self._vocab_rdd); self._vocab_rdd = None
 
+#	def filter_by_document_count(self, nmin, nmax) : 
+		
 
 	def _filter_func(self, nmin, nmax) :
 		"""
-		Replace this in extension classes to implement filtering
+		Replace this in extension classes to implement default filtering
 		"""
 		pass
 
@@ -306,8 +311,8 @@ class SparkDocumentVectorizer(object) :
 		if self._ngram_rdd is None :
 			self._ngram_rdd = \
 			    self.doc_rdd.mapValues(
-						lambda x: ngram_hash_frequency(x, ngram_range,
-																					 stop_words, features_max))
+						lambda x: ngram_frequency(x, ngram_range,
+                                                  stop_words, features_max))
 
 		return self._ngram_rdd
 
@@ -318,17 +323,17 @@ class SparkDocumentVectorizer(object) :
 		Extract the vocabulary from the ngram RDD
 		"""
 
-		num_partitions = self._num_partitions
-
+		num_partitions, nmin, nmax = self._num_partitions, self._nmin, self._nmax
+		
 		if self._vocab_rdd is None :
 			# extract the ngrams and ids
-			self._vocab_rdd = ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x])
+			self._vocab_rdd = self._ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x])
 
 			# if no occurence filtering is required, just take the distinct ngrams
 			if nmin is None and nmax is None :
 				self._vocab_rdd.map(lambda x: (x,None)) \
-											 .reduceByKey(lambda x,_: x, num_partitions) \
-											 .map(lambda (x,_): x)
+				    .reduceByKey(lambda x,_: x, num_partitions) \
+				    .map(lambda (x,_): x)
 
 			# perform occurence filtering
 			else :
@@ -336,10 +341,10 @@ class SparkDocumentVectorizer(object) :
 				if nmax is None: nmax = sys.maxint
 
 				self._vocab_rdd.map(lambda x: (x,1))\
-											 .reduceByKey(lambda a,b: a+b, num_partitions) \
-											 .filter(lambda (_,count): count < nmax and count > nmin) \
-											 .sortByKey()\
-											 .map(lambda (x,_): x)
+				    .reduceByKey(lambda a,b: a+b, num_partitions) \
+				    .filter(lambda (_,count): count < nmax and count > nmin) \
+				    .sortByKey()\
+				    .map(lambda (x,_): x)
 
 		return self._vocab_rdd
 
