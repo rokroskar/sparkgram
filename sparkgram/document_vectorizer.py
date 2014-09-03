@@ -10,6 +10,7 @@ import sys, glob, os
 from random import shuffle
 import mmh3
 from pyspark.mllib.linalg import SparseVector
+from collections import defaultdict
 
 homedir = os.environ['HOME']
 
@@ -89,7 +90,6 @@ def ngram_vocab_frequency(vocab, text, ngram_range = [1,1],
     sklearn.feature_extraction.CountVectorizer._count_vocab
 
     """
-    from collections import defaultdict
     d = defaultdict(int)
 
     # count the occurences
@@ -237,36 +237,80 @@ class SparkDocumentVectorizer(object) :
         return self.docvec_rdd
 
     
-    def apply_filter(self, nmin = None, nmax = None, filter_func = None) :
+    def apply_filter(self, filter_rdd = None, filter_func = None, **kwargs) :
         """
-        Applies the filtering to ngram_rdd and regenerates the feature vectors
-        """
-        if nmin is None :
-            nmin = self._nmin
-        if nmax is None :
-            nmax = self._nmax
+        Applies the filtering to ngram_rdd  and regenerates the feature vectors. 
 
-        # _filter_func should modify self._ngram_rdd
+        The new ngram_rdd is built using only the ngrams contained in ``filter_rdd``.
+
+        **Optional Keywords**
+        
+        *filter_rdd*: an RDD containing ngrams that will be used to construct a new ``ngram_rdd``
+        
+        *filter_func*: the function used to construct ``filter_rdd`` if ``filter_rdd`` is not given. 
+                       default is :func:`SparkDocumentVectorizer.filter_vocab`
+
+        **Keywords passed to ``filter_func``** 
+        
+        *nmin*: minimum occurence count
+
+        *nmax*: maximum occurence count
+
+        """
+
         if filter_func is None : 
-            filter_func = self._filter_func
+            filter_func = self.filter_vocab
 
-        filter_func(nmin, nmax)
+        if filter_rdd is None : 
+            filter_rdd = filter_func(**kwargs)
+
+        self._ngram_rdd = self.filter_by_rdd(filter_rdd)
 
         # docvec_rdd and vocab_rdd are both derived from ngram_rdd,
         # so force reevaluation
         del(self._docvec_rdd); self._docvec_rdd = None
-        del(self._vocab_rdd); self._vocab_rdd = None
+        del(self._vocab_rdd); self._vocab_rdd = None        
     
 
-    def _filter_func(self, nmin, nmax) :
+    def filter_by_rdd(self, filt_rdd) : 
         """
-        Replace this in extension classes to implement default filtering
+        Return a filtered ngram RDD based on ``nmin`` and ``nmax`` occurences of words 
+        in different documents.
         """
-        pass
-
-#    def filter_by_document_count(self, nmin = None, nmax = None) : 
         
-    
+        num_partitions, ngram_range, sw = self._num_partitions, self._ngram_range, self._stop_words
+        
+        # generate an RDD of (ngram,context) pairs
+        ng_inv = self.doc_rdd.flatMap(lambda (x,y): 
+                                    [(ngram,x) for ngram in word_ngrams(alpha_tokenizer(y), ngram_range, sw)])
+        
+        # do a join between the filtered vocabulary and the (ngram,context) RDD
+        filtered_ngrams = filt_rdd.map(lambda x: (x,None)).join(ng_inv, num_partitions)
+        
+        # invert the filtered ngram RDD to get (context, ngram) pairs, then group by context
+        ngram_rdd = filtered_ngrams.map(lambda (x,y): (y[1], x)).groupByKey(num_partitions)
+
+        # return the ngram_rdd but with counted occurences of ngrams
+        return ngram_rdd.map(lambda (context,ngrams): SparkDocumentVectorizer.count_ngrams(context,ngrams))
+        
+
+    def filter_vocab(self, nmin = None, nmax = None) : 
+        """
+        Filter the vocabulary RDD by min,max occurence
+        """
+        if nmin is None: nmin = self._nmin if self._nmin is not None else 0
+        if nmax is None: nmax = self._nmax if self._nmax is not None else sys.maxint
+
+        num_partitions = self._num_partitions
+
+        vocab_rdd = self.ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x])
+
+        return vocab_rdd.map(lambda x: (x,1))\
+                        .reduceByKey(lambda a,b: a+b, num_partitions) \
+                        .filter(lambda (_,count): count < nmax and count > nmin) \
+                        .sortByKey()\
+                        .map(lambda (x,_): x)
+
 
     def reset(self) :
         """
@@ -287,6 +331,15 @@ class SparkDocumentVectorizer(object) :
         return sc.parallelize(doclist)\
             .map(lambda x: open(x).read().lower())
     
+
+    @staticmethod
+    def count_ngrams(context, ngrams) : 
+        d = defaultdict(int)
+
+        for ngram in ngrams : 
+            d[ngram] += 1
+        
+        return (context, [(ngram,d[ngram]) for ngram in d.keys()])
 
     #
     # RDD property definitions
@@ -312,9 +365,12 @@ class SparkDocumentVectorizer(object) :
         features_max = self._features_max
 
         if self._ngram_rdd is None :
-            self._ngram_rdd = self.doc_rdd.mapValues(
-                lambda x: ngram_frequency(x, ngram_range,
-                                          stop_words, features_max))
+            if self._nmin is None and self._nmax is None : 
+                self._ngram_rdd = self.doc_rdd.mapValues(
+                    lambda x: ngram_frequency(x, ngram_range,
+                                              stop_words, features_max))
+            else : 
+                self.apply_filter()
 
         return self._ngram_rdd
     
@@ -340,24 +396,6 @@ class SparkDocumentVectorizer(object) :
                 self._vocab_rdd = self.filter_vocab()
 
         return self._vocab_rdd
-
-
-    def filter_vocab(self, nmin = None, nmax = None) : 
-        """
-        Filter the vocabulary RDD by min,max occurence
-        """
-        if nmin is None: nmin = self._nmin if self._nmin is not None else 0
-        if nmax is None: nmax = self._nmax if self._nmax is not None else sys.maxint
-
-        num_partitions = self._num_partitions
-
-        vocab_rdd = self.ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x])
-
-        return vocab_rdd.map(lambda x: (x,1))\
-                        .reduceByKey(lambda a,b: a+b, num_partitions) \
-                        .filter(lambda (_,count): count < nmax and count > nmin) \
-                        .sortByKey()\
-                        .map(lambda (x,_): x)
 
 
     @property
