@@ -11,6 +11,8 @@ from random import shuffle
 import mmh3
 from pyspark.mllib.linalg import SparseVector
 from collections import defaultdict
+from nltk import word_tokenize
+from nltk.stem import SnowballStemmer
 
 homedir = os.environ['HOME']
 
@@ -21,6 +23,15 @@ alphanum_tokenizer = lambda doc : alphanum_regexp.findall(doc)
 
 alpha_regexp = re.compile(ur"(?u)\b[A-Za-z']+\b", re.UNICODE)
 alpha_tokenizer = lambda doc : alpha_regexp.findall(doc)
+
+
+# define NLTK stemmer
+class StemTokenizer(object):
+    def __init__(self):
+        self.snowball = SnowballStemmer("english")
+    def __call__(self, doc):
+        doc = re.sub("[0-9][0-9,]*", "_NUM", doc)
+        return [self.snowball.stem(t) for t in word_tokenize(doc) if re.match('\w\w+$',t)]
 
 
 ###########################
@@ -66,7 +77,7 @@ def word_ngrams(tokens, ngram_range=[1,1], stop_words=None):
 
 
 def ngram_vocab_frequency(vocab, text, ngram_range = [1,1],
-                          stop_words = None, tokenier = alpha_tokenizer) :
+                          stop_words = None, tokenizer = alpha_tokenizer) :
     """
     Count the frequency of ngrams appearing in document ``text``
     matched against the ngrams stored in ``vocab``
@@ -93,7 +104,7 @@ def ngram_vocab_frequency(vocab, text, ngram_range = [1,1],
     d = defaultdict(int)
 
     # count the occurences
-    for ngram in word_ngrams(alpha_tokenizer(text), ngram_range = ngram_range, stop_words=stop_words):
+    for ngram in word_ngrams(tokenizer(text), ngram_range = ngram_range, stop_words=stop_words):
         if ngram in vocab :
             d[ngram] += 1
 
@@ -135,7 +146,7 @@ def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
     d = defaultdict(int)
 
     # count the occurences
-    for ngram in word_ngrams(alpha_tokenizer(text), 
+    for ngram in word_ngrams(tokenizer(text), 
                              ngram_range = ngram_range, 
                              stop_words = stop_words) :
         d[ngram] += 1
@@ -200,7 +211,7 @@ class SparkDocumentVectorizer(object) :
     
     def __init__(self, sc, doclist,
                  ngram_range = [1,1], stop_words = None, nmin = None, nmax = None,
-                 num_partitions = None, features_max = 2**32) :
+                 num_partitions = None, features_max = 2**32, tokenizer = alpha_tokenizer) :
 
         self._sc = sc
         self._ngram_range = ngram_range
@@ -210,6 +221,7 @@ class SparkDocumentVectorizer(object) :
         self._num_partitions = num_partitions
         self._doclist = doclist
         self._features_max = features_max
+        self._tokenizer = tokenizer
 
         # initialie the RDDs
         self._doc_rdd = None
@@ -278,11 +290,11 @@ class SparkDocumentVectorizer(object) :
         in different documents.
         """
         
-        num_partitions, ngram_range, sw = self._num_partitions, self._ngram_range, self._stop_words
+        num_partitions, ngram_range, sw, tokenizer = self._num_partitions, self._ngram_range, self._stop_words, self._tokenizer
         
         # generate an RDD of (ngram,context) pairs
         ng_inv = self.doc_rdd.flatMap(lambda (x,y): 
-                                    [(ngram,x) for ngram in word_ngrams(alpha_tokenizer(y), ngram_range, sw)])
+                                    [(ngram,x) for ngram in word_ngrams(tokenizer(y), ngram_range, sw)])
         
         # do a join between the filtered vocabulary and the (ngram,context) RDD
         filtered_ngrams = filt_rdd.map(lambda x: (x,None)).join(ng_inv, num_partitions)
