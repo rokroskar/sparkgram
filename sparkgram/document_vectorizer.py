@@ -303,7 +303,7 @@ class SparkDocumentVectorizer(object) :
 
         num_partitions = self._num_partitions
 
-        freq_rdd = self.get_corput_frequency_rdd()
+        freq_rdd = self.get_corpus_frequency_rdd()
 
         return freq_rdd.filter(lambda (_,count): count < nmax and count > nmin) \
                        .sortByKey()\
