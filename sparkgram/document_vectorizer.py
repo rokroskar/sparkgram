@@ -303,13 +303,21 @@ class SparkDocumentVectorizer(object) :
 
         num_partitions = self._num_partitions
 
-        vocab_rdd = self.ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x])
+        freq_rdd = self.get_corput_frequency_rdd()
 
-        return vocab_rdd.map(lambda x: (x,1))\
-                        .reduceByKey(lambda a,b: a+b, num_partitions) \
-                        .filter(lambda (_,count): count < nmax and count > nmin) \
-                        .sortByKey()\
-                        .map(lambda (x,_): x)
+        return freq_rdd.filter(lambda (_,count): count < nmax and count > nmin) \
+                       .sortByKey()\
+                       .map(lambda (x,_): x)
+
+
+    def get_corpus_frequency_rdd(self) : 
+        """
+        Return an RDD of ``(key,value)`` pairs, where ``key`` is the ngram and 
+        key is the number of documents that ngram appears in throughout the corpus. 
+        """
+        vocab_rdd = self.ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x])
+        
+        return vocab_rdd.map(lambda x: (x,1)).reduceByKey(lambda a,b : a+b, self._num_partitions)
 
 
     def reset(self) :
