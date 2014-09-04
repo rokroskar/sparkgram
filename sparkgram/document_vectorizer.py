@@ -454,7 +454,7 @@ class SparkDocumentVectorizer(object) :
 ### Some handy utility functions and stuff that is not used anymore
 def get_partition_counts(rdd) :
     """Returns partition indices and item counts"""
-    return rdd.mapPartitionsWithSplit(_count_partitions).collectAsMap()
+    return rdd.mapPartitionsWithIndex(_count_partitions).collectAsMap()
 
 
 def _count_partitions(id,iterator):
