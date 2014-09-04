@@ -383,12 +383,13 @@ class SparkDocumentVectorizer(object) :
         ngram_range = self._ngram_range
         stop_words = self._stop_words
         features_max = self._features_max
+        tokenizer = self._tokenizer
 
         if self._ngram_rdd is None :
             if self._nmin is None and self._nmax is None : 
                 self._ngram_rdd = self.doc_rdd.mapValues(
                     lambda x: ngram_frequency(x, ngram_range,
-                                              stop_words, features_max))
+                                              stop_words, tokenizer, features_max))
             else : 
                 self.apply_filter()
 
