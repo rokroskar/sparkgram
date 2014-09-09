@@ -56,6 +56,11 @@ def test_vocab_hash_collisions_short() :
     assert(nunique == nterms)
 
 
+def test_matrix_write():
+    dv.write_feature_matrix(os.getcwd(),'test_vectors')
+    sparkgram.document_vectorizer.load_feature_matrix(os.getcwd(), 'test_vectors')
+    
+
 def teardown() :
     sc.stop()
     os.system('~/spark/sbin/stop-all.sh')

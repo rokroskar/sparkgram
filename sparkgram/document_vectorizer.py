@@ -31,9 +31,9 @@ class StemTokenizer(object):
     def __init__(self):
         self.snowball = SnowballStemmer("english")
     def __call__(self, doc):
-        doc = re.sub("[0-9][0-9,]*", "_NUM", doc)
-        return [self.snowball.stem(t) for t in word_tokenize(doc) if re.match('\w\w+$',t)]
-
+    #doc = re.sub("[0-9][0-9,]*", "_NUM", doc)
+        #return [self.snowball.stem(t) for t in word_tokenize(doc) if re.match('\w\w+$',t)]
+        return [self.snowball.stem(t) for t in alpha_tokenizer(doc)]
 
 ###########################
 #
