@@ -492,7 +492,7 @@ class SparkDocumentVectorizer(object) :
 
         indptr[1:] = np.cumsum(lengths)
 
-        filename = '%s/%s_%d'%(path,filename,id)
+        filename = '%s/%s_%04d'%(path,filename,id)
 
     	if format == 'numpy' :
         	# write the numpy arrays to a file with
@@ -539,6 +539,7 @@ def load_feature_matrix(path, filename = 'docvec_data', format = 'numpy') :
     from scipy.sparse import csr_matrix
 
     files = glob.glob('%s/%s_*.npz'%(path,filename))
+    files.sort()
     nparts = len(files)
 
     # open up the data files
