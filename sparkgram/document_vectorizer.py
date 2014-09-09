@@ -221,7 +221,7 @@ class SparkDocumentVectorizer(object) :
         self._nmax = nmax
         self._num_partitions = num_partitions
         self._doclist = doclist
-        self._features_max = features_max
+        self._features_max = features_max if features_max is not None else 2**31
         self._tokenizer = tokenizer
 
         # initialie the RDDs
@@ -345,13 +345,11 @@ class SparkDocumentVectorizer(object) :
 
 
     @staticmethod
-    def read_docs(sc, doclist) :
-        if type(doclist) is not list :
-            raise RuntimeError("Please supply a list of filenames for processing")
+    def read_docs(doc) :
+        with open(doc) as f:
+            text = f.read().lower()
 
-        return sc.parallelize(doclist)\
-            .map(lambda x: open(x).read().lower())
-
+        return (doc,text)
 
     @staticmethod
     def count_ngrams(context, ngrams) :
@@ -372,7 +370,9 @@ class SparkDocumentVectorizer(object) :
         RDD containing the raw text partitioned across the cluster
         """
         if self._doc_rdd is None :
-            self._doc_rdd = SparkDocumentVectorizer.read_docs(self._sc, self._doclist)
+            doclist = self._doclist
+            self._doc_rdd = self._sc.parallelize(doclist) \
+                                    .map(SparkDocumentVectorizer.read_docs)
         return self._doc_rdd
 
 
@@ -434,9 +434,6 @@ class SparkDocumentVectorizer(object) :
 
         features_max = self._features_max
 
-        if features_max is None :
-            features_max = next_power_of_two(self.vocab_rdd.count())
-
         if self._docvec_rdd is None :
             # The vectors are [[(metadata),[(ngram,ngram_ID),count],[...]]]
             # We want to have [[(metadata),SparseVector[(ngram_ID,count),...]]], i.e.
@@ -460,8 +457,6 @@ class SparkDocumentVectorizer(object) :
         Return an RDD of (ngram, hash) pairs
         """
         features_max = self._features_max
-        if features_max is None :
-            features_max = next_power_of_two(self.vocab_rdd.count())
 
         return self.vocab_rdd.map(lambda x: (x,(mmh3.hash(x) & 0x7FFFFFFF) % features_max))
 
