@@ -330,7 +330,7 @@ class SparkDocumentVectorizer(object) :
         """
         vocab_rdd = self.ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x])
 
-        return vocab_rdd.map(lambda x: (x,1)).reduceByKey(lambda a,b : a+b, self._num_partitions)
+        return vocab_rdd.map(lambda x: (x,1)).reduceByKey(lambda a,b : a+b, self._num_partitions).sortByKey()
 
 
     def reset(self) :
