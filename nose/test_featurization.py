@@ -3,6 +3,7 @@ from sparkgram.document_vectorizer import SparkDocumentVectorizer
 from sklearn.feature_extraction.text import CountVectorizer
 import os, sys
 import numpy as np
+from pyspark.serializers import MarshalSerializer
 
 short_doclist = ['%s/testdata/short_test%d'%(os.getcwd(),i+1) for i in range(4)]
 
@@ -65,5 +66,5 @@ if __name__ == '__main__' :
     setup()
     test_feature_count()
     test_feature_names()
-    test_vocab_hash_collisions()
+    test_vocab_hash_collisions_short()
     #teardown()
