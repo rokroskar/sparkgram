@@ -326,11 +326,15 @@ class SparkDocumentVectorizer(object) :
     def get_corpus_frequency_rdd(self) :
         """
         Return an RDD of ``(key,value)`` pairs, where ``key`` is the ngram and
-        key is the number of documents that ngram appears in throughout the corpus.
+        ``value`` is the number of documents that ngram appears in throughout the corpus.
         """
+        # flatten the ngram list
         vocab_rdd = self.ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x])
 
-        return vocab_rdd.map(lambda x: (x,1)).reduceByKey(lambda a,b : a+b, self._num_partitions).sortByKey()
+        # do a count and sort
+        return vocab_rdd.map(lambda x: (x,1))\
+                        .reduceByKey(lambda a,b : a+b, self._num_partitions)\
+                        .sortByKey()
 
 
     def reset(self) :
