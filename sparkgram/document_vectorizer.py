@@ -144,6 +144,8 @@ def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
 
     """
     from collections import defaultdict
+    import gc
+
     d = defaultdict(int)
 
     # count the occurences
@@ -155,6 +157,9 @@ def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
     # extract the results into a list of tuples and sort by feature index
     vec = [(ngram,d[ngram]) for ngram in d.keys()]
     vec.sort()
+
+    del(d)
+    gc.collect()
 
     return vec
 
@@ -250,7 +255,7 @@ class SparkDocumentVectorizer(object) :
         return self.docvec_rdd
 
 
-    def apply_filter(self, filter_rdd = None, filter_func = None, **kwargs) :
+    def apply_filter(self, filter_rdd = None, filter_func = None, cache = False, **kwargs) :
         """
         Applies the filtering to ngram_rdd  and regenerates the feature vectors.
 
@@ -278,6 +283,8 @@ class SparkDocumentVectorizer(object) :
             filter_rdd = filter_func(**kwargs)
 
         self._ngram_rdd = self.filter_by_rdd(filter_rdd)
+
+        if cache : self._ngram_rdd = self._ngram_rdd.cache()
 
         # docvec_rdd and vocab_rdd are both derived from ngram_rdd,
         # so force reevaluation
@@ -535,6 +542,29 @@ class SparkDocumentVectorizer(object) :
                                                    path, filename, format)).sum()
 
         print 'created %d files %s/%s_[0-%d]'%(res,path,filename,res)
+
+
+    def pickle_vocab_map(self, path, vocab_map = None) :
+        """Save the vocabulary mapping to a file"""
+        import cPickle as pickle
+
+        if vocab_map is None :
+            vocab_map = self.get_vocab_map()
+
+        d = {}
+
+        for (term,id) in vocab_map.collect() :
+            if id in d:
+                raise RuntimeError("Key collision found")
+            else :
+                d[id] = term
+
+
+        pickle.dump(d,open(path+'/vocab_map.dump','wb'))
+        
+
+
+
 
 
 def load_feature_matrix(path, filename = 'docvec_data', format = 'numpy') :
