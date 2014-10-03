@@ -449,7 +449,7 @@ class SparkDocumentVectorizer(object) :
             # just IDs and counts, no ngram string
             self._docvec_rdd = self.ngram_rdd.mapValues(
                 lambda x: SparseVector(
-                    features_max,[((mmh3.hash(y[0]) & 0x7FFFFFFF) % features_max, y[1]) for y in x]))
+                    features_max,[(abs(mmh3.hash(y[0])) % features_max, y[1]) for y in x]))
 
         return self._docvec_rdd
 
@@ -467,7 +467,7 @@ class SparkDocumentVectorizer(object) :
         """
         features_max = self._features_max
 
-        return self.vocab_rdd.map(lambda x: (x,(mmh3.hash(x) & 0x7FFFFFFF) % features_max))
+        return self.vocab_rdd.map(lambda x: (x,abs(mmh3.hash(x)) % features_max))
 
     @staticmethod
     def _write_single_partition_matrix(id, iterator, counts, datalen, path, filename, format):
@@ -518,6 +518,27 @@ class SparkDocumentVectorizer(object) :
 
         yield 1
 
+    @staticmethod
+    def _write_single_partition_vocab_map(partition_id, iterator, path) :
+        """
+        Output the vocabulary mapping from this partition
+        """
+
+        import cPickle as pickle
+
+        d = {}
+
+        for (term,id) in iterator :
+            if id in d:
+                raise RuntimeError("Key collision found")
+            else :
+                d[id] = term
+
+        f = open(path+'/vocab_map_%d.dump'%partition_id,'wb')
+        pickle.dump(d,f)
+        f.close()
+
+        yield 1
 
     def write_feature_matrix(self, path, filename = 'docvec_data', format = 'numpy'):
         """
@@ -549,18 +570,8 @@ class SparkDocumentVectorizer(object) :
         if vocab_map is None :
             vocab_map = self.get_vocab_map()
 
-        d = {}
-
-        for (term,id) in vocab_map.collect() :
-            if id in d:
-                raise RuntimeError("Key collision found")
-            else :
-                d[id] = term
-
-
-        pickle.dump(d,open(path+'/vocab_map.dump','wb'))
-
-
+        vocab_map.mapPartitionsWithIndex(lambda id, iterator:
+                                         SparkDocumentVectorizer._write_single_partition_vocab_map(id,iterator,path)).count()
 
 
 
