@@ -44,7 +44,7 @@ class StemTokenizer(object):
 def analyze(text) :
     return word_ngrams(tokenizer(text))
 
-
+@profile
 def word_ngrams(tokens, ngram_range=[1,1], stop_words=None):
     """
     Turn tokens into a sequence of n-grams after stop words filtering
@@ -115,8 +115,9 @@ def ngram_vocab_frequency(vocab, text, ngram_range = [1,1],
 
     return res
 
+@profile
 def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
-                    tokenizer = alpha_tokenizer, feature_max = 2**32) :
+                    tokenizer = alpha_tokenizer) :
     """
     Count the frequency of ngrams appearing in document ``text``
     by using string hashes.
@@ -133,11 +134,6 @@ def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
 
     *tokenizer*: function that will turn the raw text into tokens
 
-    *feature_max*: maximum number of expected features. This sets the size of the
-    sparse vectors generated during the document vectorization step and
-    should be set to the nearest power of two larger than the expected
-    number of features/ngrams
-
     **Output**
 
     a list of (ngram,count) tuples
@@ -148,15 +144,17 @@ def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
 
     d = defaultdict(int)
 
+    tokens = tokenizer(text)
+
+    ngrams = list(word_ngrams(tokens, ngram_range = ngram_range, stop_words = stop_words))
+
     # count the occurences
-    for ngram in word_ngrams(tokenizer(text),
-                             ngram_range = ngram_range,
-                             stop_words = stop_words) :
+    for ngram in ngrams:
         d[ngram] += 1
 
     # extract the results into a list of tuples and sort by feature index
     vec = [(ngram,d[ngram]) for ngram in d.keys()]
-    vec.sort()
+    #vec.sort()
 
     del(d)
     gc.collect()
@@ -561,7 +559,7 @@ class SparkDocumentVectorizer(object) :
 
 
         pickle.dump(d,open(path+'/vocab_map.dump','wb'))
-        
+
 
 
 
