@@ -44,7 +44,6 @@ class StemTokenizer(object):
 def analyze(text) :
     return word_ngrams(tokenizer(text))
 
-@profile
 def word_ngrams(tokens, ngram_range=[1,1], stop_words=None):
     """
     Turn tokens into a sequence of n-grams after stop words filtering
@@ -115,7 +114,7 @@ def ngram_vocab_frequency(vocab, text, ngram_range = [1,1],
 
     return res
 
-@profile
+
 def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
                     tokenizer = alpha_tokenizer) :
     """
@@ -215,7 +214,8 @@ class SparkDocumentVectorizer(object) :
 
     def __init__(self, sc, doclist,
                  ngram_range = [1,1], stop_words = None, nmin = None, nmax = None,
-                 num_partitions = None, features_max = None, tokenizer = alpha_tokenizer) :
+                 num_partitions = None, features_max = None, tokenizer = alpha_tokenizer,
+                hashing = False) :
 
         self._sc = sc
         self._ngram_range = ngram_range
@@ -236,7 +236,7 @@ class SparkDocumentVectorizer(object) :
 
         # initialize other properties
         self._nfeatures = None
-
+        self._hashing = hashing
 
     def load_text(self) :
         """
@@ -399,7 +399,7 @@ class SparkDocumentVectorizer(object) :
             if self._nmin is None and self._nmax is None :
                 self._ngram_rdd = self.doc_rdd.mapValues(
                     lambda x: ngram_frequency(x, ngram_range,
-                                              stop_words, tokenizer, features_max))
+                                              stop_words, tokenizer))
             else :
                 self.apply_filter()
 
@@ -443,13 +443,33 @@ class SparkDocumentVectorizer(object) :
 
         features_max = self._features_max
 
+        num_partitions = self._num_partitions
+
         if self._docvec_rdd is None :
             # The vectors are [[(metadata),[(ngram,ngram_ID),count],[...]]]
             # We want to have [[(metadata),SparseVector[(ngram_ID,count),...]]], i.e.
             # just IDs and counts, no ngram string
-            self._docvec_rdd = self.ngram_rdd.mapValues(
-                lambda x: SparseVector(
-                    features_max,[(abs(mmh3.hash(y[0])) % features_max, y[1]) for y in x]))
+
+            if self._hashing :
+                self._docvec_rdd = self.ngram_rdd.mapValues(
+                    lambda x: SparseVector(
+                        features_max,[(abs(mmh3.hash(ngram)) % features_max, count) for (ngram,count) in x]))
+
+            else :
+                vocab_map = self.get_vocab_map()
+                max_index = vocab_map.values().max()
+
+                # make an rdd of (ngram,(context,count)) pairs so we can join with vocabulary map rdd
+                inv_ngram_rdd = self.ngram_rdd\
+                                    .flatMap(lambda (context,ngrams) :
+                                                [(ngram,(context,count)) for (ngram,count) in ngrams])
+
+                # perform the join and map into (context, (id,count)) then group by context
+                feature_rdd = inv_ngram_rdd.join(vocab_map)\
+                                                .map(lambda (ngram, ((context, count),id)):
+                                                        (context, (id,count))).groupByKey(num_partitions)
+
+                self._docvec_rdd = feature_rdd.mapValues(lambda features: SparseVector(max_index, features))
 
         return self._docvec_rdd
 
@@ -467,7 +487,12 @@ class SparkDocumentVectorizer(object) :
         """
         features_max = self._features_max
 
-        return self.vocab_rdd.map(lambda x: (x,abs(mmh3.hash(x)) % features_max))
+        if self._hashing :
+            return self.vocab_rdd.map(lambda x: (x,abs(mmh3.hash(x)) % features_max))
+
+        else :
+            return self.vocab_rdd.zipWithUniqueId()
+
 
     @staticmethod
     def _write_single_partition_matrix(id, iterator, counts, datalen, path, filename, format):
@@ -572,8 +597,6 @@ class SparkDocumentVectorizer(object) :
 
         vocab_map.mapPartitionsWithIndex(lambda id, iterator:
                                          SparkDocumentVectorizer._write_single_partition_vocab_map(id,iterator,path)).count()
-
-
 
 
 def load_feature_matrix(path, filename = 'docvec_data', format = 'numpy') :
