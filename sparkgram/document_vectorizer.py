@@ -233,6 +233,8 @@ class SparkDocumentVectorizer(object) :
         self._vocab_rdd = None
         self._docvec_rdd = None
 
+        # dictionary of RDDs 
+        self.rdds = {}
 
         # initialize other properties
         self._nfeatures = None
@@ -373,6 +375,11 @@ class SparkDocumentVectorizer(object) :
     # RDD property definitions
     #
 
+    def _finalize_rdd(self, rdd, name) : 
+        rdd.setName(name)
+        self.rdds[name] = rdd
+        
+
     @property
     def doc_rdd(self) :
         """
@@ -382,6 +389,10 @@ class SparkDocumentVectorizer(object) :
             doclist = self._doclist
             self._doc_rdd = self._sc.parallelize(doclist) \
                                     .map(SparkDocumentVectorizer.read_docs)
+
+
+            self._finalize_rdd(self._doc_rdd, 'doc_rdd')
+
         return self._doc_rdd
 
 
@@ -402,6 +413,9 @@ class SparkDocumentVectorizer(object) :
                                               stop_words, tokenizer))
             else :
                 self.apply_filter()
+
+
+            self._finalize_rdd(self._ngram_rdd, 'ngram_rdd')
 
         return self._ngram_rdd
 
@@ -425,6 +439,9 @@ class SparkDocumentVectorizer(object) :
             # perform occurence filtering
             else :
                 self._vocab_rdd = self.filter_vocab()
+
+
+            self._finalize_rdd(self._vocab_rdd, 'vocab_rdd')
 
         return self._vocab_rdd
 
@@ -471,6 +488,8 @@ class SparkDocumentVectorizer(object) :
 
                 self._docvec_rdd = feature_rdd.mapValues(lambda features: SparseVector(max_index, features))
 
+            self._finalize_rdd(self._docvec_rdd, 'docvec_rdd')
+        
         return self._docvec_rdd
 
 
@@ -597,6 +616,13 @@ class SparkDocumentVectorizer(object) :
 
         vocab_map.mapPartitionsWithIndex(lambda id, iterator:
                                          SparkDocumentVectorizer._write_single_partition_vocab_map(id,iterator,path)).count()
+
+
+    def save(self, path) :
+        """Save the RDDs from this Vectorizer"""
+        for rdd_name, rdd in self.rdds.iteritems() : 
+            if rdd is not None : 
+                rdd.saveAsPickleFile(path+'/%s'%rdd_name)
 
 
 def load_feature_matrix(path, filename = 'docvec_data', format = 'numpy') :
