@@ -243,7 +243,7 @@ class SparkDocumentVectorizer(object) :
         if load_path is not None : 
             for rdd_name in os.listdir(load_path) :
                 if rdd_name[-3:] == 'rdd' : 
-                    self.rdds[rdd_name] = sc.pickleFile(load_path+'/'+rdd_name)
+                    self.rdds[rdd_name] = sc.pickleFile(load_path+'/'+rdd_name).coalesce(sc.defaultParallelism)
             
             print 'Loaded %d RDDs: '%(len(self.rdds))
             for rdd in self.rdds.keys() :
@@ -292,6 +292,8 @@ class SparkDocumentVectorizer(object) :
 
         if filter_rdd is None :
             filter_rdd = filter_func(**kwargs)
+
+        
 
         self._ngram_rdd = self.filter_by_rdd(filter_rdd)
 
@@ -391,11 +393,18 @@ class SparkDocumentVectorizer(object) :
         self.rdds[name] = rdd
         
 
+    def _check_rdd(self, rdd_name) : 
+        if rdd_name in self.rdds: 
+            return self.rdds[rdd_name]
+        else : 
+            return None
+
     @property
     def doc_rdd(self) :
         """
         RDD containing the raw text partitioned across the cluster
         """
+        self._doc_rdd = self._check_rdd('doc_rdd')
         if self._doc_rdd is None :
             doclist = self._doclist
             self._doc_rdd = self._sc.parallelize(doclist) \
@@ -412,19 +421,17 @@ class SparkDocumentVectorizer(object) :
         """
         Transform the text into [(ngram, ID), count] pairs
         """
+        self._ngram_rdd = self._check_rdd('ngram_rdd')
+
         ngram_range = self._ngram_range
         stop_words = self._stop_words
         features_max = self._features_max
         tokenizer = self._tokenizer
 
         if self._ngram_rdd is None :
-            if self._nmin is None and self._nmax is None :
-                self._ngram_rdd = self.doc_rdd.mapValues(
-                    lambda x: ngram_frequency(x, ngram_range,
-                                              stop_words, tokenizer))
-            else :
-                self.apply_filter()
-
+            self._ngram_rdd = self.doc_rdd.mapValues(
+                lambda x: ngram_frequency(x, ngram_range,
+                                          stop_words, tokenizer))
 
             self._finalize_rdd(self._ngram_rdd, 'ngram_rdd')
 
@@ -437,6 +444,8 @@ class SparkDocumentVectorizer(object) :
         Extract the vocabulary from the ngram RDD
         """
         num_partitions, nmin, nmax = self._num_partitions, self._nmin, self._nmax
+
+        self._vocab_rdd = self._check_rdd('vocab_rdd')
 
         if self._vocab_rdd is None :
             # if no occurence filtering is required, get the distinct ngrams
@@ -469,6 +478,8 @@ class SparkDocumentVectorizer(object) :
         list that can be passed to MLlib, for example.
         """
 
+        self._docvec_rdd = self._check_rdd('docvec_rdd')
+        
         features_max = self._features_max
 
         num_partitions = self._num_partitions
@@ -521,7 +532,7 @@ class SparkDocumentVectorizer(object) :
             return self.vocab_rdd.map(lambda x: (x,abs(mmh3.hash(x)) % features_max))
 
         else :
-            return self.vocab_rdd.zipWithUniqueId()
+            return self.vocab_rdd.zipWithIndex()
 
 
     @staticmethod
