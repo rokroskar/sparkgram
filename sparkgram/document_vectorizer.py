@@ -249,7 +249,17 @@ class SparkDocumentVectorizer(object) :
             for rdd in self.rdds.keys() :
                 print rdd
                     
-            
+        # make the vital properties dictionary for pickling
+        self.properties = {ngram_range: ngram_range, 
+                           stop_words: stop_words,
+                           nmin: nmin, 
+                           nmax: nmax,
+                           num_partitions: num_partitions,
+                           doclist: doclist,
+                           features_max: features_max
+                           hashing: hashing,
+                           nfeatures: nfeatures
+                           }
 
     def load_text(self) :
         """
