@@ -248,6 +248,7 @@ class SparkDocumentVectorizer(object) :
             print 'Loaded %d RDDs: '%(len(self.rdds))
             for rdd in self.rdds.keys() :
                 print rdd
+
                     
         # make the vital properties dictionary for pickling
         self.properties = {ngram_range: ngram_range, 
@@ -256,7 +257,7 @@ class SparkDocumentVectorizer(object) :
                            nmax: nmax,
                            num_partitions: num_partitions,
                            doclist: doclist,
-                           features_max: features_max
+                           features_max: features_max,
                            hashing: hashing,
                            nfeatures: nfeatures
                            }
@@ -349,7 +350,6 @@ class SparkDocumentVectorizer(object) :
         freq_rdd = self.get_corpus_frequency_rdd()
 
         return freq_rdd.filter(lambda (_,count): count < nmax and count > nmin) \
-                       .sortByKey()\
                        .map(lambda (x,_): x)
 
 
@@ -462,7 +462,6 @@ class SparkDocumentVectorizer(object) :
                 self._vocab_rdd = self.ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x]) \
                                       .map(lambda x: (x,None)) \
                                       .reduceByKey(lambda x,_: x, num_partitions) \
-                                      .sortByKey() \
                                       .map(lambda (x,_): x)
 
             # perform occurence filtering
