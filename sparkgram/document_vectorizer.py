@@ -359,12 +359,11 @@ class SparkDocumentVectorizer(object) :
         ``value`` is the number of documents that ngram appears in throughout the corpus.
         """
         # flatten the ngram list
-        vocab_rdd = self.ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x])
+        vocab_rdd = self.ngram_rdd.flatMap(lambda (_,ngrams): [ngram for (ngram,count) in ngrams])
 
         # do a count and sort
-        return vocab_rdd.map(lambda x: (x,1))\
-                        .reduceByKey(lambda a,b : a+b, self._num_partitions)\
-                        .sortByKey()
+        return vocab_rdd.map(lambda ngram: (ngram,1))\
+                        .reduceByKey(lambda a,b : a+b, self._num_partitions)
 
 
     def reset(self) :
@@ -655,7 +654,7 @@ class SparkDocumentVectorizer(object) :
         for rdd_name, rdd in self.rdds.iteritems() : 
             if rdd is not None : 
                 rdd.saveAsPickleFile(path+'/%s'%rdd_name)
-
+                
 
 def load_feature_matrix(path, filename = 'docvec_data', format = 'numpy') :
     """Create a scipy sparse matrix from partition data saved on disk"""
