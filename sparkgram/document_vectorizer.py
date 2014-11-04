@@ -456,17 +456,10 @@ class SparkDocumentVectorizer(object) :
         self._vocab_rdd = self._check_rdd('vocab_rdd')
 
         if self._vocab_rdd is None :
-            # if no occurence filtering is required, get the distinct ngrams
-            if nmin is None and nmax is None :
-                self._vocab_rdd = self.ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x]) \
-                                      .map(lambda x: (x,None)) \
-                                      .reduceByKey(lambda x,_: x, num_partitions) \
-                                      .map(lambda (x,_): x)
-
-            # perform occurence filtering
-            else :
-                self._vocab_rdd = self.filter_vocab()
-
+            self._vocab_rdd = self.ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x]) \
+                                  .map(lambda x: (x,None)) \
+                                  .reduceByKey(lambda x,_: x, num_partitions) \
+                                  .map(lambda (x,_): x)
 
             self._finalize_rdd(self._vocab_rdd, 'vocab_rdd')
 
