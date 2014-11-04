@@ -251,15 +251,14 @@ class SparkDocumentVectorizer(object) :
 
                     
         # make the vital properties dictionary for pickling
-        self.properties = {ngram_range: ngram_range, 
-                           stop_words: stop_words,
-                           nmin: nmin, 
-                           nmax: nmax,
-                           num_partitions: num_partitions,
-                           doclist: doclist,
-                           features_max: features_max,
-                           hashing: hashing,
-                           nfeatures: nfeatures
+        self.properties = {'ngram_range': ngram_range, 
+                           'stop_words': stop_words,
+                           'nmin': nmin, 
+                           'nmax': nmax,
+                           'num_partitions': num_partitions,
+                           'doclist': doclist,
+                           'features_max': features_max,
+                           'hashing': hashing,
                            }
 
     def load_text(self) :
