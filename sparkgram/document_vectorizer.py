@@ -303,16 +303,14 @@ class SparkDocumentVectorizer(object) :
         if filter_rdd is None :
             filter_rdd = filter_func(**kwargs)
 
-        
-
-        self._ngram_rdd = self.filter_by_rdd(filter_rdd)
+        self.ngram_rdd = self.filter_by_rdd(filter_rdd)
 
         if cache : self._ngram_rdd = self._ngram_rdd.cache()
 
         # docvec_rdd and vocab_rdd are both derived from ngram_rdd,
         # so force reevaluation
-        del(self._docvec_rdd); self._docvec_rdd = None
-        del(self._vocab_rdd); self._vocab_rdd = None
+        del(self.docvec_rdd)
+        del(self.vocab_rdd)
 
 
     def filter_by_rdd(self, filt_rdd) :
@@ -369,11 +367,9 @@ class SparkDocumentVectorizer(object) :
         """
         Discard the calculated RDDs, i.e. ngram_rdd, vocab_rdd, and docvec_rdd
         """
-        del(self._ngram_rdd)
-        del(self._vocab_rdd)
-        del(self._docvec_rdd)
-
-        self._ngram_rdd, self._vocab_rdd, self._docvec_rdd = None, None, None
+        del(self.ngram_rdd)
+        del(self.vocab_rdd)
+        del(self.docvec_rdd)
 
 
     @staticmethod
@@ -424,6 +420,12 @@ class SparkDocumentVectorizer(object) :
         return self._doc_rdd
 
 
+    @doc_rdd.setter
+    def doc_rdd(self, value) : 
+        self._doc_rdd = value
+        self.rdds['doc_rdd'] = value
+
+
     @property
     def ngram_rdd(self) :
         """
@@ -446,6 +448,21 @@ class SparkDocumentVectorizer(object) :
         return self._ngram_rdd
 
 
+    @ngram_rdd.setter
+    def ngram_rdd(self, value) : 
+        self._ngram_rdd = value
+        self.rdds['ngram_rdd'] = value
+
+
+    @ngram_rdd.deleter
+    def ngram_rdd(self) : 
+        del(self._ngram_rdd)
+        self._ngram_rdd = None
+        try:
+            del(self.rdds['ngram_rdd'])
+        except KeyError : 
+            pass
+
     @property
     def vocab_rdd(self) :
         """
@@ -464,6 +481,16 @@ class SparkDocumentVectorizer(object) :
             self._finalize_rdd(self._vocab_rdd, 'vocab_rdd')
 
         return self._vocab_rdd
+
+    
+    @vocab_rdd.deleter
+    def vocab_rdd(self) : 
+        del(self._vocab_rdd)
+        self._vocab_rdd = None
+        try: 
+            del(self.rdds['vocab_rdd'])
+        except KeyError : 
+            pass
 
 
     @property
@@ -513,6 +540,23 @@ class SparkDocumentVectorizer(object) :
             self._finalize_rdd(self._docvec_rdd, 'docvec_rdd')
         
         return self._docvec_rdd
+
+
+    @docvec_rdd.setter
+    def docvec_rdd(self, value) : 
+        self._docvec_rdd = value
+        self.rdds['docvec_rdd'] = value
+
+
+
+    @docvec_rdd.deleter
+    def docvec_rdd(self) : 
+         del(self._docvec_rdd)
+         self._docvec_rdd = None
+         try: 
+             del(self.rdds['docvec_rdd'])
+         except KeyError : 
+             pass
 
 
     @property
