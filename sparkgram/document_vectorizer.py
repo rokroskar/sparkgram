@@ -535,7 +535,7 @@ class SparkDocumentVectorizer(object) :
                                                 .map(lambda (ngram, ((context, count),id)):
                                                         (context, (id,count))).groupByKey(num_partitions)
 
-                self._docvec_rdd = feature_rdd.mapValues(lambda features: SparseVector(max_index, features))
+                self._docvec_rdd = feature_rdd.mapValues(lambda features: SparseVector(max_index+1, features))
 
             self._finalize_rdd(self._docvec_rdd, 'docvec_rdd')
         
