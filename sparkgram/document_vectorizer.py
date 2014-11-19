@@ -232,6 +232,7 @@ class SparkDocumentVectorizer(object) :
         self._ngram_rdd = None
         self._vocab_rdd = None
         self._docvec_rdd = None
+        self._vocab_map = None
 
         # dictionary of RDDs 
         self.rdds = {}
@@ -322,8 +323,7 @@ class SparkDocumentVectorizer(object) :
         num_partitions, ngram_range, sw, tokenizer = self._num_partitions, self._ngram_range, self._stop_words, self._tokenizer
 
         # generate an RDD of (ngram,context) pairs
-        ng_inv = self.doc_rdd.flatMap(lambda (x,y):
-                                    [(ngram,x) for ngram in word_ngrams(tokenizer(y), ngram_range, sw)])
+        ng_inv = self.ngram_rdd.flatMap(lambda (context,ngrams): [(ngram,(context, count)) for (ngram, count) in ngrams])
 
         # do a join between the filtered vocabulary and the (ngram,context) RDD
         filtered_ngrams = filt_rdd.map(lambda x: (x,None)).join(ng_inv, num_partitions)
@@ -347,7 +347,7 @@ class SparkDocumentVectorizer(object) :
         freq_rdd = self.get_corpus_frequency_rdd()
 
         return freq_rdd.filter(lambda (_,count): count < nmax and count > nmin) \
-                       .map(lambda (x,_): x)
+                       .map(lambda (ngram,_): ngram)
 
 
     def get_corpus_frequency_rdd(self) :
@@ -356,7 +356,9 @@ class SparkDocumentVectorizer(object) :
         ``value`` is the number of documents that ngram appears in throughout the corpus.
         """
         # flatten the ngram list
-        vocab_rdd = self.ngram_rdd.flatMap(lambda (_,ngrams): [ngram for (ngram,count) in ngrams])
+        vocab_rdd = self.ngram_rdd.flatMap(lambda (_,ngrams): [ngram for (ngram,_) in ngrams])
+
+        num_partitions = self._num_partitions
 
         # do a count and sort
         return vocab_rdd.map(lambda ngram: (ngram,1))\
@@ -522,7 +524,7 @@ class SparkDocumentVectorizer(object) :
                         features_max,[(abs(mmh3.hash(ngram)) % features_max, count) for (ngram,count) in x]))
 
             else :
-                vocab_map = self.get_vocab_map()
+                vocab_map = self.vocab_map
                 max_index = vocab_map.values().max()
 
                 # make an rdd of (ngram,(context,count)) pairs so we can join with vocabulary map rdd
@@ -546,12 +548,13 @@ class SparkDocumentVectorizer(object) :
     def docvec_rdd(self, value) : 
         self._docvec_rdd = value
         self.rdds['docvec_rdd'] = value
-
-
+        
 
     @docvec_rdd.deleter
     def docvec_rdd(self) : 
          del(self._docvec_rdd)
+         del(self.vocab_map)
+
          self._docvec_rdd = None
          try: 
              del(self.rdds['docvec_rdd'])
@@ -560,23 +563,32 @@ class SparkDocumentVectorizer(object) :
 
 
     @property
-    def nfeatures(self) :
-        if self._nfeatures is None :
-            self._nfeatures = self.vocab_rdd.count()
-        return self._nfeatures
-
-
-    def get_vocab_map(self) :
+    def vocab_map(self) :
         """
         Return an RDD of (ngram, hash) pairs
         """
         features_max = self._features_max
 
-        if self._hashing :
-            return self.vocab_rdd.map(lambda x: (x,abs(mmh3.hash(x)) % features_max))
+        if self._vocab_map is None : 
+            if self._hashing :
+                self._vocab_map = self.vocab_rdd.map(lambda x: (x,abs(mmh3.hash(x)) % features_max)).cache()
+            else :
+                self._vocab_map = self.vocab_rdd.zipWithIndex().cache()
 
-        else :
-            return self.vocab_rdd.zipWithIndex()
+        return self._vocab_map
+
+
+    @vocab_map.deleter
+    def vocab_map(self) : 
+        del(self._vocab_map)
+        self._vocab_map = None
+
+
+    @property
+    def nfeatures(self) :
+        if self._nfeatures is None :
+            self._nfeatures = self.vocab_rdd.count()
+        return self._nfeatures
 
 
     @staticmethod
