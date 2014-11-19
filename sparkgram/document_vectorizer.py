@@ -323,8 +323,9 @@ class SparkDocumentVectorizer(object) :
         num_partitions, ngram_range, sw, tokenizer = self._num_partitions, self._ngram_range, self._stop_words, self._tokenizer
 
         # generate an RDD of (ngram,context) pairs
-        ng_inv = self.ngram_rdd.flatMap(lambda (context,ngrams): [(ngram,(context, count)) for (ngram, count) in ngrams])
-
+        ng_inv = self.doc_rdd.flatMap(lambda (context,text):
+                                          [(ngram,context) for ngram in word_ngrams(tokenizer(text), ngram_range, sw)])
+        
         # do a join between the filtered vocabulary and the (ngram,context) RDD
         filtered_ngrams = filt_rdd.map(lambda x: (x,None)).join(ng_inv, num_partitions)
 
