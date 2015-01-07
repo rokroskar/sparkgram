@@ -232,7 +232,7 @@ class SparkDocumentVectorizer(object) :
         self._ngram_rdd = None
         self._vocab_rdd = None
         self._docvec_rdd = None
-        self._vocab_map = None
+        self._vocab_map_rdd = None
 
         # dictionary of RDDs 
         self.rdds = {}
@@ -244,8 +244,7 @@ class SparkDocumentVectorizer(object) :
         if load_path is not None : 
             for rdd_name in os.listdir(load_path) :
                 if rdd_name[-3:] == 'rdd' : 
-                    self.rdds[rdd_name] = sc.pickleFile(load_path+'/'+rdd_name).coalesce(sc.defaultParallelism)
-            
+                    self.rdds[rdd_name] = sc.pickleFile(load_path+'/'+rdd_name).coalesce(num_partitions)            
             print 'Loaded %d RDDs: '%(len(self.rdds))
             for rdd in self.rdds.keys() :
                 print rdd
@@ -525,8 +524,8 @@ class SparkDocumentVectorizer(object) :
                         features_max,[(abs(mmh3.hash(ngram)) % features_max, count) for (ngram,count) in x]))
 
             else :
-                vocab_map = self.vocab_map
-                max_index = vocab_map.values().max()
+                vocab_map_rdd = self.vocab_map_rdd
+                max_index = vocab_map_rdd.values().max()
 
                 # make an rdd of (ngram,(context,count)) pairs so we can join with vocabulary map rdd
                 inv_ngram_rdd = self.ngram_rdd\
@@ -534,14 +533,16 @@ class SparkDocumentVectorizer(object) :
                                                 [(ngram,(context,count)) for (ngram,count) in ngrams])
 
                 # perform the join and map into (context, (id,count)) then group by context
-                feature_rdd = inv_ngram_rdd.join(vocab_map)\
+                feature_rdd = inv_ngram_rdd.join(vocab_map_rdd)\
                                                 .map(lambda (ngram, ((context, count),id)):
                                                         (context, (id,count))).groupByKey(num_partitions)
 
                 self._docvec_rdd = feature_rdd.mapValues(lambda features: SparseVector(max_index+1, features))
 
             self._finalize_rdd(self._docvec_rdd, 'docvec_rdd')
-        
+
+            self._docvec_rdd.vocab_map = vocab_map_rdd.collect()
+
         return self._docvec_rdd
 
 
@@ -554,7 +555,7 @@ class SparkDocumentVectorizer(object) :
     @docvec_rdd.deleter
     def docvec_rdd(self) : 
          del(self._docvec_rdd)
-         del(self.vocab_map)
+         del(self.vocab_map_rdd)
 
          self._docvec_rdd = None
          try: 
@@ -564,25 +565,29 @@ class SparkDocumentVectorizer(object) :
 
 
     @property
-    def vocab_map(self) :
+    def vocab_map_rdd(self) :
         """
         Return an RDD of (ngram, hash) pairs
         """
         features_max = self._features_max
 
-        if self._vocab_map is None : 
+        self._vocab_map_rdd = self._check_rdd('vocab_map_rdd')
+
+        if self._vocab_map_rdd is None : 
             if self._hashing :
-                self._vocab_map = self.vocab_rdd.map(lambda x: (x,abs(mmh3.hash(x)) % features_max)).cache()
+                self._vocab_map_rdd = self.vocab_rdd.map(lambda x: (x,abs(mmh3.hash(x)) % features_max))
             else :
-                self._vocab_map = self.vocab_rdd.zipWithIndex().cache()
+                self._vocab_map_rdd = self.vocab_rdd.zipWithIndex()
 
-        return self._vocab_map
+        self._vocab_map_rdd = self._vocab_map_rdd.cache()
+
+        return self._vocab_map_rdd
 
 
-    @vocab_map.deleter
-    def vocab_map(self) : 
-        del(self._vocab_map)
-        self._vocab_map = None
+    @vocab_map_rdd.deleter
+    def vocab_map_rdd(self) : 
+        del(self._vocab_map_rdd)
+        self._vocab_map_rdd = None
 
 
     @property
