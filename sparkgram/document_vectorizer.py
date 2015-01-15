@@ -312,8 +312,15 @@ class SparkDocumentVectorizer(object) :
         del(self.docvec_rdd)
         del(self.vocab_rdd)
 
-
-    def filter_by_rdd(self, filt_rdd) :
+    
+    @staticmethod
+    def filter_by_set(filt_set_b, ngrams) : 
+        # get the data from the broadcast variable
+        filt_set = filt_set_b.value)
+        return [(ngram, count) for (ngram, count) in ngrams if ngram in filt_set]
+        
+        
+    def filter_by_rdd(self, filt_rdd, use_list = True, filt_list = None) :
         """
         Return a filtered ngram RDD based on ``nmin`` and ``nmax`` occurences of words
         in different documents.
@@ -321,18 +328,26 @@ class SparkDocumentVectorizer(object) :
 
         num_partitions, ngram_range, sw, tokenizer = self._num_partitions, self._ngram_range, self._stop_words, self._tokenizer
 
-        # generate an RDD of (ngram,context) pairs
-        ng_inv = self.doc_rdd.flatMap(lambda (context,text):
-                                          [(ngram,context) for ngram in word_ngrams(tokenizer(text), ngram_range, sw)])
+        if use_list :
+            if filt_list is None : 
+                filt_list = filt_rdd.collect()
+            filt_set_b = self._sc.broadcast(set(filt_list))
+
+            return self.ngram_rdd.mapValues(lambda ngrams : SparkDocumentVectorizer.filter_by_set(filt_set_b, ngrams))
+
+        else :
+            # generate an RDD of (ngram,context) pairs
+            ng_inv = self.doc_rdd.flatMap(lambda (context,text): \
+                                              [(ngram,context) for ngram in word_ngrams(tokenizer(text), ngram_range, sw)])
         
-        # do a join between the filtered vocabulary and the (ngram,context) RDD
-        filtered_ngrams = filt_rdd.map(lambda x: (x,None)).join(ng_inv, num_partitions)
+            # do a join between the filtered vocabulary and the (ngram,context) RDD
+            filtered_ngrams = filt_rdd.map(lambda x: (x,None)).join(ng_inv, num_partitions)
 
-        # invert the filtered ngram RDD to get (context, ngram) pairs, then group by context
-        ngram_rdd = filtered_ngrams.map(lambda (x,y): (y[1], x)).groupByKey(num_partitions)
+            # invert the filtered ngram RDD to get (context, ngram) pairs, then group by context
+            ngram_rdd = filtered_ngrams.map(lambda (x,y): (y[1], x)).groupByKey(num_partitions)
 
-        # return the ngram_rdd but with counted occurences of ngrams
-        return ngram_rdd.map(lambda (context,ngrams): SparkDocumentVectorizer.count_ngrams(context,ngrams))
+            # return the ngram_rdd but with counted occurences of ngrams
+            return ngram_rdd.map(lambda (context,ngrams): SparkDocumentVectorizer.count_ngrams(context,ngrams))
 
 
     def filter_vocab(self, nmin = None, nmax = None) :
