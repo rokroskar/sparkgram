@@ -316,7 +316,7 @@ class SparkDocumentVectorizer(object) :
     @staticmethod
     def filter_by_set(filt_set_b, ngrams) : 
         # get the data from the broadcast variable
-        filt_set = filt_set_b.value)
+        filt_set = filt_set_b.value
         return [(ngram, count) for (ngram, count) in ngrams if ngram in filt_set]
         
         
