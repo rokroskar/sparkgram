@@ -19,8 +19,8 @@ Start your spark cluster etc. and launch a pyspark shell.
 From the pyspark shell:
 
 ```
->>> import sparkgrams, glob
->>> dv = sparkgrams.SparkDocumentVectorizer(glob.glob('*txt'))
+>>> import sparkgram, glob
+>>> dv = sparkgram.SparkDocumentVectorizer(glob.glob('*txt'))
 >>> dv.docvec_rdd.take(5)
 ```
 
