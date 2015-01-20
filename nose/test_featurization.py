@@ -1,7 +1,18 @@
+# set up the spark context
+import os, sys, socket
+homedir = os.environ['HOME']
+os.environ['SPARK_HOME'] = '%s/spark'%homedir
+spark_home = os.environ['SPARK_HOME']
+master_url = 'spark://%s:7077'%socket.gethostname()
+sys.path.insert(0,os.environ['SPARK_HOME']+'/python')
+sys.path.insert(0,os.environ['SPARK_HOME']+'/python/lib/py4j-0.8.2.1-src.zip')
+
+# import packages
+import pyspark
+from pyspark import SparkContext
 import sparkgram
 from sparkgram.document_vectorizer import SparkDocumentVectorizer
 from sklearn.feature_extraction.text import CountVectorizer
-import os, sys
 import numpy as np
 from pyspark.serializers import MarshalSerializer
 
@@ -14,20 +25,7 @@ def setup() :
     cv = CountVectorizer('filename',tokenizer=sparkgram.document_vectorizer.alpha_tokenizer,
                          ngram_range = [1,3])
 
-
-    # set up the spark context
-    homedir = os.environ['HOME']
-    os.environ['SPARK_HOME'] = '%s/spark'%homedir
-    spark_home = os.environ['SPARK_HOME']
-
     os.system('~/spark/sbin/start-all.sh')
-
-    master_url = 'spark://%s:7077'%os.environ['HOST']
-    sys.path.insert(0,os.environ['SPARK_HOME']+'/python')
-    sys.path.insert(0,os.environ['SPARK_HOME']+'/python/lib/py4j-0.8.1-src.zip')
-
-    import pyspark
-    from pyspark import SparkContext
 
     sc = SparkContext(master = master_url, appName = 'sparkgram unit tests', batchSize=10)
 
@@ -51,7 +49,7 @@ def test_feature_names():
 
 
 def test_vocab_hash_collisions_short() :
-    nunique = len(np.unique(dv.get_vocab_map().values().collect()))
+    nunique = len(np.unique(dv.vocab_map_rdd().values().collect()))
     nterms = len(dv.vocab_rdd.collect())
     assert(nunique == nterms)
 
