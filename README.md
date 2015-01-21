@@ -1,7 +1,7 @@
 sparkgram
 =========
 
-A simple package for processing text corpora with Spark. Extracts ngrams,
+A simple package for processing text corpora with Spark. Extracts [ngrams](http://en.wikipedia.org/wiki/N-gram),
 produces vector representations of documents in a corpus etc.
 
 Install:
