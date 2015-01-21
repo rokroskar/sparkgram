@@ -1,20 +1,18 @@
 import os, sys, socket
+import numpy as np
+
 # set up the spark context
-    
 homedir = os.environ['HOME']
 os.environ['SPARK_HOME'] = '%s/spark'%homedir
 spark_home = os.environ['SPARK_HOME']
-master_url = 'spark://%s:7077'%socket.gethostname()
+
 sys.path.insert(0,os.environ['SPARK_HOME']+'/python')
 sys.path.insert(0,os.environ['SPARK_HOME']+'/python/lib/py4j-0.8.2.1-src.zip')
 
-# import packages
-import pyspark
-from pyspark import SparkContext
-import sparkgram
+import sparkgram, sparkgram.document_vectorizer
 from sparkgram.document_vectorizer import SparkDocumentVectorizer
 from sklearn.feature_extraction.text import CountVectorizer
-import numpy as np
+from pyspark.serializers import MarshalSerializer
 
 short_doclist = ['%s/testdata/short_test%d'%(os.getcwd(),i+1) for i in range(4)]
 
@@ -25,9 +23,15 @@ def setup() :
     cv = CountVectorizer('filename',tokenizer=sparkgram.document_vectorizer.alpha_tokenizer,
                          ngram_range = [1,3])
 
-    os.system('~/spark/sbin/start-all.sh')
+    os.system('~/spark/sbin/start-all.sh --master="local[4]"')
 
-    sc = SparkContext(master = master_url, appName = 'sparkgram unit tests', batchSize=10)
+#    master_url = 'spark://%s:7077'%socket.gethostname()
+
+    import pyspark
+    from pyspark import SparkContext
+
+
+    sc = SparkContext("local", appName = 'sparkgram unit tests', batchSize=10)
 
     dv = SparkDocumentVectorizer(sc, short_doclist, ngram_range = [1,3],
                                  tokenizer = sparkgram.document_vectorizer.alpha_tokenizer)
@@ -49,7 +53,7 @@ def test_feature_names():
 
 
 def test_vocab_hash_collisions_short() :
-    nunique = len(np.unique(dv.vocab_map_rdd().values().collect()))
+    nunique = len(np.unique(dv.vocab_map_rdd.values().collect()))
     nterms = len(dv.vocab_rdd.collect())
     assert(nunique == nterms)
 
@@ -70,4 +74,4 @@ if __name__ == '__main__' :
     test_feature_count()
     test_feature_names()
     test_vocab_hash_collisions_short()
-    #teardown()
+    teardown()
