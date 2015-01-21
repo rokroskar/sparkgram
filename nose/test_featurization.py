@@ -1,5 +1,6 @@
-# set up the spark context
 import os, sys, socket
+# set up the spark context
+    
 homedir = os.environ['HOME']
 os.environ['SPARK_HOME'] = '%s/spark'%homedir
 spark_home = os.environ['SPARK_HOME']
@@ -14,7 +15,6 @@ import sparkgram
 from sparkgram.document_vectorizer import SparkDocumentVectorizer
 from sklearn.feature_extraction.text import CountVectorizer
 import numpy as np
-from pyspark.serializers import MarshalSerializer
 
 short_doclist = ['%s/testdata/short_test%d'%(os.getcwd(),i+1) for i in range(4)]
 
