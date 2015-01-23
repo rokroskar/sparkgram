@@ -717,12 +717,88 @@ class SparkDocumentVectorizer(object) :
                                          SparkDocumentVectorizer._write_single_partition_vocab_map(id,iterator,path)).count()
 
 
-    def save(self, path) :
-        """Save the RDDs from this Vectorizer"""
-        for rdd_name, rdd in self.rdds.iteritems() : 
+    def save(self, path, rdd_names = 'all', out_type = 'pickleFile', db_path = None, db_fields = {}) :
+        """
+        Save the RDDs from this Vectorizer
+
+
+        **Input**
+
+        *path* : relative path for saving rdds
+
+        **Optional Keywords** 
+
+        *rdd_names* : list of rdd names to write -- default, 'all'
+
+        *out_type* : which type of Spark output to create 
+
+        *db_path* : if you want to add the entries to a database, add the path here
+
+        *db_fields* : if you specify a *db_path* you must also specify a dictionary of database fields and their values
+        
+        """
+        
+        if rdd_names == 'all' : 
+            rdd_names = self.rdds.keys()
+
+        for rdd_name in rdd_names :
+            rdd = self.rdds[rdd_name]
             if rdd is not None : 
-                rdd.saveAsPickleFile(path+'/%s'%rdd_name)
+                SparkDocumentVectorizer.write_rdd(rdd, path+'/%s'%rdd_name, **kwargs)
+#                rdd.saveAsPickleFile(path+'/%s'%rdd_name)
+ 
+
+    @staticmethod
+    def write_rdd(rdd, path, out_type = 'pickleFile', db_path = None, db_fields = {}) : 
+        """
+        Write an RDD to disk with a given output type and optionally adding an entry to an RDD metadata database. 
+        
+        **Input**
+
+        *rdd* : the rdd to write to disk
+
+        *path* : absolute path for the output
+
+        **Optional Keywords**
+
+        *out_type* : which type of Spark output to create 
+
+        *db_path* : if you want to add the entries to a database, add the path here
+
+        *db_fields* : if you specify a *db_path* you must also specify a dictionary of database fields and their values
+        """
+        
+        rdd.saveAsPickleFile(path)        
+
+        if db_path is not None : 
+            # open the database connection -- if the database doesn't exist it will automatically be created
+            import sqlite3
+            import time
+            conn = sqlite3.connect(db_path)
+
+            with conn :
+                c = conn.cursor()
+
+                # create the RDDs table if it doesn't exist
+                c.execute('create TABLE if NOT EXISTS RDDs (path text, date_time text, filter text, description text, script text)')
+
+                filter_text = db_fields.get('filter', '')
+                description_text = db_fields.get('description', '')
+                script_text = db_fields.get('script', '')
                 
+                # form data tuple
+                date = time.localtime()
+                date_string = '%s-%s-%s_%s:%s:%s'%(date.tm_year, date.tm_mon, date.tm_mday, 
+                                                   date.tm_hour, date.tm_min, date.tm_sec)
+                data = (path, date_string, filter_text, description_text, script_text)
+                c.execute('INSERT INTO RDDs VALUES (?,?,?,?,?)', data)
+
+        
+            
+            
+            
+            
+
 
 def load_feature_matrix(path, filename = 'docvec_data', format = 'numpy') :
     """Create a scipy sparse matrix from partition data saved on disk"""
