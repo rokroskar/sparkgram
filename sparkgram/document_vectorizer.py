@@ -556,7 +556,7 @@ class SparkDocumentVectorizer(object) :
 
             self._finalize_rdd(self._docvec_rdd, 'docvec_rdd')
 
-            self._docvec_rdd.vocab_map = vocab_map_rdd.collect()
+            self._docvec_rdd.vocab_map = self.vocab_map_rdd.collect()
 
         return self._docvec_rdd
 
