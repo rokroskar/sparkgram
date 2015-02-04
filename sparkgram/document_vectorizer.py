@@ -443,6 +443,16 @@ class SparkDocumentVectorizer(object) :
         self.rdds['doc_rdd'] = value
 
 
+    @doc_rdd.deleter
+    def doc_rdd(self) : 
+        del(self._doc_rdd)
+        self._doc_rdd = None
+        try:
+            del(self.rdds['doc_rdd'])
+        except KeyError : 
+            pass
+
+
     @property
     def ngram_rdd(self) :
         """
@@ -768,7 +778,12 @@ class SparkDocumentVectorizer(object) :
         *db_fields* : if you specify a *db_path* you must also specify a dictionary of database fields and their values
         """
         
-        rdd.saveAsPickleFile(path)        
+        if out_type == 'pickleFile' : 
+            rdd.saveAsPickleFile(path)        
+        elif out_type == 'textFile' : 
+            rdd.saveAsTextFile(path)
+        else : 
+            raise RuntimeError("out_type must be either 'pickleFile' or 'textFile'")
 
         if db_path is not None : 
             # open the database connection -- if the database doesn't exist it will automatically be created
@@ -788,16 +803,10 @@ class SparkDocumentVectorizer(object) :
                 
                 # form data tuple
                 date = time.localtime()
-                date_string = '%s-%s-%s_%s:%s:%s'%(date.tm_year, date.tm_mon, date.tm_mday, 
-                                                   date.tm_hour, date.tm_min, date.tm_sec)
+                date_string = '%s-%02d-%02d_%02d:%02d:%02d'%(date.tm_year, int(date.tm_mon), int(date.tm_mday), 
+                                                   int(date.tm_hour), int(date.tm_min), int(date.tm_sec))
                 data = (path, date_string, filter_text, description_text, script_text)
                 c.execute('INSERT INTO RDDs VALUES (?,?,?,?,?)', data)
-
-        
-            
-            
-            
-            
 
 
 def load_feature_matrix(path, filename = 'docvec_data', format = 'numpy') :
