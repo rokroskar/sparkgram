@@ -145,15 +145,14 @@ def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
 
     tokens = tokenizer(text)
 
-    ngrams = list(word_ngrams(tokens, ngram_range = ngram_range, stop_words = stop_words))
+    ngrams = word_ngrams(tokens, ngram_range = ngram_range, stop_words = stop_words)
 
     # count the occurences
     for ngram in ngrams:
         d[ngram] += 1
 
-    # extract the results into a list of tuples and sort by feature index
+    # extract the results into a list of tuples 
     vec = [(ngram,d[ngram]) for ngram in d.keys()]
-    #vec.sort()
 
     del(d)
     gc.collect()
@@ -244,7 +243,7 @@ class SparkDocumentVectorizer(object) :
         if load_path is not None : 
             for rdd_name in os.listdir(load_path) :
                 if rdd_name[-3:] == 'rdd' : 
-                    self.rdds[rdd_name] = sc.pickleFile(load_path+'/'+rdd_name).coalesce(num_partitions)            
+                    self.rdds[rdd_name] = sc.pickleFile(load_path+'/'+rdd_name)            
             print 'Loaded %d RDDs: '%(len(self.rdds))
             for rdd in self.rdds.keys() :
                 print rdd
