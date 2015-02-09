@@ -215,7 +215,7 @@ class SparkDocumentVectorizer(object) :
     def __init__(self, sc, doclist,
                  ngram_range = [1,1], stop_words = None, nmin = None, nmax = None,
                  num_partitions = None, features_max = None, tokenizer = alpha_tokenizer,
-                 hashing = False, load_path = None) :
+                 hashing = False, load_path = None, hdfs_namenode = None) :
 
         self._sc = sc
         self._ngram_range = ngram_range
@@ -242,9 +242,32 @@ class SparkDocumentVectorizer(object) :
         self._hashing = hashing
 
         if load_path is not None : 
-            for rdd_name in os.listdir(load_path) :
-                if rdd_name[-3:] == 'rdd' : 
-                    self.rdds[rdd_name] = sc.pickleFile(load_path+'/'+rdd_name).coalesce(num_partitions)            
+
+            if load_path[:4] != 'hdfs' : 
+                for rdd_name in os.listdir(load_path) :
+                    if rdd_name[-3:] == 'rdd' : 
+                        self.rdds[rdd_name] = sc.pickleFile(load_path + '/' + rdd_name).coalesce(num_partitions)            
+            
+            # we're dealing with HDFS
+            else : 
+                try : 
+                    from snakebite.client import Client
+                except ImportError : 
+                    raise ImportError("package snakebite is required for working with HDFS: pip install snakebite")
+                
+                if hdfs_namenode is None : 
+                    # assume defaults --> localhost and port 8020 for the hdfs namenode
+                    import socket
+                    hdfs_namenode = socket.gethostname()
+ 
+                client = Client(hdfs_namenode, 8020)
+                for rdd_path_dict in client.ls([load_path[7:]]) : 
+                    rdd_name = rdd_path_dict['path'].split('/')[-1]
+                    if rdd_name[-3:] == 'rdd': 
+                        self.rdds[rdd_name] = sc.pickleFile(load_path + '/' + rdd_name)
+                    
+                
+                
             print 'Loaded %d RDDs: '%(len(self.rdds))
             for rdd in self.rdds.keys() :
                 print rdd
