@@ -28,12 +28,17 @@ alpha_tokenizer = lambda doc : alpha_regexp.findall(doc)
 
 # define NLTK stemmer
 class StemTokenizer(object):
-    def __init__(self):
+    def __init__(self, stop_words = None):
         self.snowball = SnowballStemmer("english")
+        self.stop_words = stop_words
     def __call__(self, doc):
     #doc = re.sub("[0-9][0-9,]*", "_NUM", doc)
         #return [self.snowball.stem(t) for t in word_tokenize(doc) if re.match('\w\w+$',t)]
-        return [self.snowball.stem(t) for t in alpha_tokenizer(doc)]
+        stop_words = self.stop_words
+        if stop_words is not None : 
+            return [self.snowball.stem(t) for t in alpha_tokenizer(doc) if t not in stop_words]
+        else :
+            return [self.snowball.stem(t) for t in alpha_tokenizer(doc)]
 
 ###########################
 #
