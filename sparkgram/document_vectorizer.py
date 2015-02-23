@@ -25,20 +25,25 @@ alphanum_tokenizer = lambda doc : alphanum_regexp.findall(doc)
 alpha_regexp = re.compile(ur"(?u)\b[A-Za-z']+\b", re.UNICODE)
 alpha_tokenizer = lambda doc : alpha_regexp.findall(doc)
 
+alpha_no_single_letter_regexp = re.compile(ur"(?u)\b[A-Za-z'][A-Za-z']+\b", re.UNICODE)
+alpha_no_single_letter_tokenizer = lambda doc : alpha_no_single_letter_regexp.findall(doc)
 
 # define NLTK stemmer
 class StemTokenizer(object):
-    def __init__(self, stop_words = None):
+    def __init__(self, tokenizer = None, stop_words = None):
         self.snowball = SnowballStemmer("english")
         self.stop_words = stop_words
+        self.tokenizer = tokenizer if tokenizer is not None else alpha_tokenizer
+
     def __call__(self, doc):
     #doc = re.sub("[0-9][0-9,]*", "_NUM", doc)
         #return [self.snowball.stem(t) for t in word_tokenize(doc) if re.match('\w\w+$',t)]
         stop_words = self.stop_words
+        tokenizer = self.tokenizer
         if stop_words is not None : 
-            return [self.snowball.stem(t) for t in alpha_tokenizer(doc) if t not in stop_words]
+            return [self.snowball.stem(t) for t in tokenizer(doc) if t not in stop_words]
         else :
-            return [self.snowball.stem(t) for t in alpha_tokenizer(doc)]
+            return [self.snowball.stem(t) for t in tokenizer(doc)]
 
 ###########################
 #
@@ -46,8 +51,6 @@ class StemTokenizer(object):
 #
 ###########################
 
-def analyze(text) :
-    return word_ngrams(tokenizer(text))
 
 def word_ngrams(tokens, ngram_range=[1,1], stop_words=None):
     """
