@@ -632,8 +632,10 @@ class SparkDocumentVectorizer(object) :
                 self._vocab_map_rdd = self.vocab_rdd.map(lambda x: (x,abs(mmh3.hash(x)) % features_max))
             else :
                 self._vocab_map_rdd = self.vocab_rdd.sortBy(lambda x: x).zipWithIndex()
-
-        self._vocab_map_rdd = self._vocab_map_rdd.cache()
+                
+            self._vocab_map_rdd = self._vocab_map_rdd.cache()
+            
+            self._finalize_rdd(self._vocab_map_rdd, 'vocab_map_rdd')
 
         return self._vocab_map_rdd
 
