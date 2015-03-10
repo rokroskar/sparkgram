@@ -414,6 +414,7 @@ class SparkDocumentVectorizer(object) :
         del(self.ngram_rdd)
         del(self.vocab_rdd)
         del(self.docvec_rdd)
+        del(self.vocab_map_rdd)
 
 
     @staticmethod
@@ -558,6 +559,7 @@ class SparkDocumentVectorizer(object) :
         the list can later be turned into a (LabeledPoint, SparseVector)
         list that can be passed to MLlib, for example.
         """
+        from scipy.sparse import csr_matrix
 
         self._docvec_rdd = self._check_rdd('docvec_rdd')
         
@@ -578,20 +580,26 @@ class SparkDocumentVectorizer(object) :
             else :
                 vocab_map_rdd = self.vocab_map_rdd
                 max_index = vocab_map_rdd.values().max()
-
+                
                 # make an rdd of (ngram,(context,count)) pairs so we can join with vocabulary map rdd
-                inv_ngram_rdd = self.ngram_rdd\
-                                    .flatMap(lambda (context,ngrams) :
-                                                [(ngram,(context,count)) for (ngram,count) in ngrams])
-
+                inv_ngram_rdd = self.ngram_rdd.flatMap(lambda (context,ngrams) : [(ngram,(context,count)) for (ngram,count) in ngrams])
+                
                 # perform the join and map into (context, (id,count)) then group by context
                 feature_rdd = inv_ngram_rdd.join(vocab_map_rdd)\
-                                                .map(lambda (ngram, ((context, count),id)):
-                                                        (context, (id,count))).groupByKey(num_partitions)
+                                           .map(lambda (ngram, ((context, count),id)):
+                                                    (context, (id,count))).groupByKey(num_partitions)
+                    
+                    
+                def make_csr_matrix(features) : 
+                    indices = np.array([p[0] for p in features], dtype = np.uint64)
+                    values  = np.array([p[1] for p in features], dtype = np.float64)
 
-                self._docvec_rdd = feature_rdd.mapValues(lambda features: 
-                                                         SparseVector(max_index+1, sorted(features, key = lambda (a,b): a)))
+                    return csr_matrix((values, (np.zeros(len(indices)), indices)))
 
+#                self._docvec_rdd = feature_rdd.mapValues(lambda features: 
+#                                                         SparseVector(max_index+1, sorted(features, key = lambda (a,b): a)))
+
+                self._docvec_rdd = feature_rdd.mapValues(make_csr_matrix)
 
        #     self._docvec_rdd.vocab_map = vocab_map_rdd.collect()
 
@@ -639,6 +647,12 @@ class SparkDocumentVectorizer(object) :
 
         return self._vocab_map_rdd
 
+
+    @vocab_map_rdd.setter
+    def vocab_map_rdd(self, value) : 
+        self._vocab_map_rdd = value
+        self.rdds['vocab_map_rdd'] = value
+       
 
     @vocab_map_rdd.deleter
     def vocab_map_rdd(self) : 
@@ -826,18 +840,20 @@ class SparkDocumentVectorizer(object) :
                 c = conn.cursor()
 
                 # create the RDDs table if it doesn't exist
-                c.execute('create TABLE if NOT EXISTS RDDs (path text, date_time text, filter text, description text, script text)')
+                c.execute('create TABLE if NOT EXISTS RDDs (path text, date_time text, filter text, description text, script text, year_start INTEGER, year_end INTEGER)')
 
                 filter_text = db_fields.get('filter', '')
                 description_text = db_fields.get('description', '')
                 script_text = db_fields.get('script', '')
-                
+                year_start = db_fields.get('year_start', 0)
+                year_end = db_fields.get('year_end', 0)
+
                 # form data tuple
                 date = time.localtime()
                 date_string = '%s-%02d-%02d_%02d:%02d:%02d'%(date.tm_year, int(date.tm_mon), int(date.tm_mday), 
                                                    int(date.tm_hour), int(date.tm_min), int(date.tm_sec))
-                data = (path, date_string, filter_text, description_text, script_text)
-                c.execute('INSERT INTO RDDs VALUES (?,?,?,?,?)', data)
+                data = (path, date_string, filter_text, description_text, script_text, year_start, year_end)
+                c.execute('INSERT INTO RDDs VALUES (?,?,?,?,?,?,?)', data)
 
 
 def load_feature_matrix(path, filename = 'docvec_data', format = 'numpy') :
@@ -906,5 +922,8 @@ def _count_partitions(id,iterator):
 
 def _zip_with_index(l,indices,k) :
     start_ind = sum(indices[:k+1])
-    for i, item in enumerate(l) :
-        yield (item,start_ind+i)
+    return enumerate(l, long(start_ind))
+#for item in enumerate(l) :
+    #    yield (item,ind)
+    #    ind += 1
+
