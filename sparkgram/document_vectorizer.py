@@ -594,7 +594,7 @@ class SparkDocumentVectorizer(object) :
                     indices = np.array([p[0] for p in features], dtype = np.uint64)
                     values  = np.array([p[1] for p in features], dtype = np.float64)
 
-                    return csr_matrix((values, (np.zeros(len(indices)), indices)))
+                    return csr_matrix((values, (np.zeros(len(indices)), indices)), shape=(1,max_index+1))
 
 #                self._docvec_rdd = feature_rdd.mapValues(lambda features: 
 #                                                         SparseVector(max_index+1, sorted(features, key = lambda (a,b): a)))
