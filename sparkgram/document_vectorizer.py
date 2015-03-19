@@ -346,6 +346,7 @@ class SparkDocumentVectorizer(object) :
         filt_set = filt_set_b.value
         return [(ngram, count) for (ngram, count) in ngrams if ngram in filt_set]
         
+
     def filter_ngram_counts(self, doc_counts = 2, corpus_counts = 5) : 
         """
         Filter the ngram-rdd by filtering out the words that occur
@@ -843,6 +844,9 @@ class SparkDocumentVectorizer(object) :
             rdd.saveAsPickleFile(path)        
         elif out_type == 'textFile' : 
             rdd.saveAsTextFile(path)
+        elif out_type == 'libsvm' : 
+            from pyspark.mllib.util import MLUtils
+            MLUtils.saveAsLibSVMFile(rdd, path)            
         else : 
             raise RuntimeError("out_type must be either 'pickleFile' or 'textFile'")
 
