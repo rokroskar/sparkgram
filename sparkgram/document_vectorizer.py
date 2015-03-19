@@ -355,7 +355,7 @@ class SparkDocumentVectorizer(object) :
 
         return self.ngram_rdd\
             .flatMap(lambda (context, ngrams): \
-                         [(ngram, (context, count)) for (ngram,count) in ngrams if (count >= op_count) & (len(ngram) > 1)])\
+                         [(ngram, (context, count)) for (ngram,count) in ngrams if (count >= doc_count) & (len(ngram) > 1)])\
             .aggregateByKey([], lambda a,b : a+[b], add)\
             .flatMap(lambda (ngram, meta): \
                          [(context, (ngram,count)) for (context, count) in meta if len(meta) > corpus_count])\
