@@ -346,6 +346,21 @@ class SparkDocumentVectorizer(object) :
         filt_set = filt_set_b.value
         return [(ngram, count) for (ngram, count) in ngrams if ngram in filt_set]
         
+    def filter_ngram_counts(self, doc_counts = 2, corpus_counts = 5) : 
+        """
+        Filter the ngram-rdd by filtering out the words that occur
+        less than `doc_counts` in a given document and less than 
+        `corpus_counts` times in the corpus
+        """
+
+        return self.ngram_rdd\
+            .flatMap(lambda (context, ngrams): \
+                         [(ngram, (context, count)) for (ngram,count) in ngrams if (count >= op_count) & (len(ngram) > 1)])\
+            .aggregateByKey([], lambda a,b : a+[b], add)\
+            .flatMap(lambda (ngram, meta): \
+                         [(context, (ngram,count)) for (context, count) in meta if len(meta) > corpus_count])\
+            .aggregateByKey([], lambda a,b : a+[b], add)
+    
         
     def filter_by_rdd(self, filt_rdd, use_list = True, filt_list = None) :
         """
@@ -353,7 +368,8 @@ class SparkDocumentVectorizer(object) :
         in different documents.
         """
 
-        num_partitions, ngram_range, sw, tokenizer = self._num_partitions, self._ngram_range, self._stop_words, self._tokenizer
+        num_partitions, ngram_range, sw, tokenizer = self._num_partitions, self._ngram_range, \
+            self._stop_words, self._tokenizer
 
         if use_list :
             if filt_list is None : 
