@@ -608,10 +608,14 @@ class SparkDocumentVectorizer(object) :
                     
                     
                 def make_csr_matrix(features) : 
-                    indices = np.array([p[0] for p in features], dtype = np.uint64)
+                    indices = np.array([p[0] for p in features], dtype = np.int64)
                     values  = np.array([p[1] for p in features], dtype = np.float64)
+                    
+                    assert(np.alltrue(indices >= 0))
+                    assert(np.alltrue(values >= 0))
 
-                    return csr_matrix((values, (np.zeros(len(indices)), indices)), shape=(1,max_index+1))
+                    if len(indices) > 0 : 
+                        return csr_matrix((values, (np.zeros(len(indices)), indices)), shape=(1,max_index+1))
 
 #                self._docvec_rdd = feature_rdd.mapValues(lambda features: 
 #                                                         SparseVector(max_index+1, sorted(features, key = lambda (a,b): a)))
@@ -846,7 +850,8 @@ class SparkDocumentVectorizer(object) :
             rdd.saveAsTextFile(path)
         elif out_type == 'libsvm' : 
             from pyspark.mllib.util import MLUtils
-            MLUtils.saveAsLibSVMFile(rdd, path)            
+            MLUtils.saveAsLibSVMFile(rdd, path)
+            
         else : 
             raise RuntimeError("out_type must be either 'pickleFile' or 'textFile'")
 
