@@ -16,6 +16,9 @@ from nltk import word_tokenize
 from nltk.stem import SnowballStemmer
 
 from operator import add
+from functools import partial
+
+from util import make_csr_matrix_index
 
 homedir = os.environ['HOME']
 
@@ -578,11 +581,9 @@ class SparkDocumentVectorizer(object) :
         the list can later be turned into a (LabeledPoint, SparseVector)
         list that can be passed to MLlib, for example.
         """
-        from scipy.sparse import csr_matrix
-
         self._docvec_rdd = self._check_rdd('docvec_rdd')
         
-        features_max = self._features_max
+        max_index = self._features_max
 
         num_partitions = self._num_partitions
 
@@ -590,11 +591,11 @@ class SparkDocumentVectorizer(object) :
             # The vectors are [[(metadata),[(ngram,ngram_ID),count],[...]]]
             # We want to have [[(metadata),SparseVector[(ngram_ID,count),...]]], i.e.
             # just IDs and counts, no ngram string
-
+           
             if self._hashing :
-                self._docvec_rdd = self.ngram_rdd.mapValues(
-                    lambda x: SparseVector(
-                        features_max,[(abs(mmh3.hash(ngram)) % features_max, count) for (ngram,count) in x]))
+                feature_rdd = self.ngram_rdd.mapValues(
+                    lambda x: [(abs(mmh3.hash(ngram)) % max_index, count) for (ngram,count) in x])
+                feature_rdd.count()
 
             else :
                 vocab_map_rdd = self.vocab_map_rdd
@@ -608,23 +609,7 @@ class SparkDocumentVectorizer(object) :
                                            .map(lambda (ngram, ((context, count),id)):
                                                     (context, (id,count))).groupByKey(num_partitions)
                     
-                    
-                def make_csr_matrix(features) : 
-                    indices = np.array([p[0] for p in features], dtype = np.int64)
-                    values  = np.array([p[1] for p in features], dtype = np.float64)
-                    
-                    assert(np.alltrue(indices >= 0))
-                    assert(np.alltrue(values >= 0))
-
-                    if len(indices) > 0 : 
-                        return csr_matrix((values, (np.zeros(len(indices)), indices)), shape=(1,max_index+1))
-
-#                self._docvec_rdd = feature_rdd.mapValues(lambda features: 
-#                                                         SparseVector(max_index+1, sorted(features, key = lambda (a,b): a)))
-
-                self._docvec_rdd = feature_rdd.mapValues(make_csr_matrix)
-
-       #     self._docvec_rdd.vocab_map = vocab_map_rdd.collect()
+            self._docvec_rdd = feature_rdd.mapValues(make_csr_matrix_index(max_index))
 
             self._finalize_rdd(self._docvec_rdd, 'docvec_rdd')
 
@@ -682,7 +667,7 @@ class SparkDocumentVectorizer(object) :
         try: 
             del(self._vocab_map_rdd)
             del(self.rdds['vocab_map_rdd'])
-        except AttributeError : 
+        except (AttributeError, KeyError): 
             pass # this means it was already deleted somewhere else
 
         self._vocab_map_rdd = None
@@ -698,30 +683,41 @@ class SparkDocumentVectorizer(object) :
         self._tf_idf_rdd =  None
         
 
-        
     @staticmethod
-    def calculate_tf_idf(rdd) : 
+    def calculate_tf_idf(tf, ndocs) : 
         """
         Calculates a Term Frequency - Inverse Document Frequency matrix for the supplied RDD. 
         This assumes that the data is in key-value pair format and that the keys are documents.
         """
-        from operator import add
-
         # term frequency
-        tf = rdd.mapValues(lambda vec: vec / vec.sum())
+        # tf = rdd.mapValues(lambda vec: vec / vec.sum())
         # document frequency
-        df = rdd.flatMap(lambda (context, vec): [(index,1) for index in vec.indices])\
-                    .reduceByKey(add)
-
+        def nuke_counts(vec) : 
+            vec.data /= vec.data
+            return vec
         
-                       
+        idf = tf.mapValues(nuke_counts).values().reduce(add)
+        idf.data = np.log10(ndocs/idf.data)
+        
+        # wrap the function using the df vector
+        apply_df_func = partial(SparkDocumentVectorizer.apply_df, df_vec = idf)
+        
+        tf_idf = tf.mapValues(apply_df_func)
+        return tf_idf
+
+    @staticmethod
+    def apply_df(tf_vec, df_vec) : 
+        """Modify the `tf` vector by dividing each of its elements by the corresponding value
+        in the `df` vector."""
+        # change the data of the vector directly 
+        tf_vec.data *= df_vec[0:1,tf_vec.indices].toarray().squeeze()
+        return tf_vec
 
     @property
     def nfeatures(self) :
         if self._nfeatures is None :
             self._nfeatures = self.vocab_rdd.count()
         return self._nfeatures
-
 
     @staticmethod
     def _write_single_partition_matrix(id, iterator, counts, datalen, path, filename, format):
@@ -967,7 +963,7 @@ def load_feature_matrix(path, filename = 'docvec_data', format = 'numpy') :
 def nonzero_vector_elements(rdd) :
     """Returns non-zero element count on each partition"""
     def helper(id,iterator):
-        yield (id,sum([len(vec.values) for (context,vec) in iterator]))
+        yield (id,sum([len(vec.data) for (context,vec) in iterator]))
     return rdd.mapPartitionsWithIndex(helper).collectAsMap()
 
 def get_partition_counts(rdd) :
