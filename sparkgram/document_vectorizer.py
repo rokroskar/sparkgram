@@ -15,6 +15,8 @@ from collections import defaultdict
 from nltk import word_tokenize
 from nltk.stem import SnowballStemmer
 
+from operator import add
+
 homedir = os.environ['HOME']
 
 
@@ -356,10 +358,10 @@ class SparkDocumentVectorizer(object) :
 
         return self.ngram_rdd\
             .flatMap(lambda (context, ngrams): \
-                         [(ngram, (context, count)) for (ngram,count) in ngrams if (count >= doc_count) & (len(ngram) > 1)])\
+                         [(ngram, (context, count)) for (ngram,count) in ngrams if (count >= doc_counts) & (len(ngram) > 1)])\
             .aggregateByKey([], lambda a,b : a+[b], add)\
             .flatMap(lambda (ngram, meta): \
-                         [(context, (ngram,count)) for (context, count) in meta if len(meta) > corpus_count])\
+                         [(context, (ngram,count)) for (context, count) in meta if len(meta) > corpus_counts])\
             .aggregateByKey([], lambda a,b : a+[b], add)
     
         
@@ -677,9 +679,42 @@ class SparkDocumentVectorizer(object) :
 
     @vocab_map_rdd.deleter
     def vocab_map_rdd(self) : 
-        del(self._vocab_map_rdd)
+        try: 
+            del(self._vocab_map_rdd)
+            del(self.rdds['vocab_map_rdd'])
+        except AttributeError : 
+            pass # this means it was already deleted somewhere else
+
         self._vocab_map_rdd = None
 
+
+    @property
+    def tf_idf_rdd(self) : 
+        """
+        Term frequency - inverse document frequency RDD.
+        By default constructed from `docvec_rdd`
+        """
+
+        self._tf_idf_rdd =  None
+        
+
+        
+    @staticmethod
+    def calculate_tf_idf(rdd) : 
+        """
+        Calculates a Term Frequency - Inverse Document Frequency matrix for the supplied RDD. 
+        This assumes that the data is in key-value pair format and that the keys are documents.
+        """
+        from operator import add
+
+        # term frequency
+        tf = rdd.mapValues(lambda vec: vec / vec.sum())
+        # document frequency
+        df = rdd.flatMap(lambda (context, vec): [(index,1) for index in vec.indices])\
+                    .reduceByKey(add)
+
+        
+                       
 
     @property
     def nfeatures(self) :
