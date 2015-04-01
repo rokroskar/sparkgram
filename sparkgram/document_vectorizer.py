@@ -86,7 +86,10 @@ def word_ngrams(tokens, ngram_range=[1,1], stop_words=None):
     n_tokens = len(tokens)
     for n in xrange(min_n, min(max_n + 1, n_tokens + 1)):
         for i in xrange(n_tokens - n + 1):
-            yield " ".join(tokens[i: i+n])
+            if n == 1: 
+                yield tokens[i]
+            else : 
+                yield " ".join(tokens[i: i+n])
 
 
 def ngram_vocab_frequency(vocab, text, ngram_range = [1,1],
@@ -152,7 +155,6 @@ def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
 
     """
     from collections import defaultdict
-    import gc
 
     d = defaultdict(int)
 
@@ -166,9 +168,7 @@ def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
 
     # extract the results into a list of tuples 
     vec = [(ngram,d[ngram]) for ngram in d.keys()]
-
     del(d)
-#    gc.collect()
 
     return vec
 
@@ -591,10 +591,12 @@ class SparkDocumentVectorizer(object) :
             # The vectors are [[(metadata),[(ngram,ngram_ID),count],[...]]]
             # We want to have [[(metadata),SparseVector[(ngram_ID,count),...]]], i.e.
             # just IDs and counts, no ngram string
-           
+
+            def helper_hash(ngrams): 
+                 return [((mmh3.hash(ngram) & 0xffffffff) % max_index, count) for (ngram,count) in ngrams]
+                
             if self._hashing :
-                feature_rdd = self.ngram_rdd.mapValues(
-                    lambda x: [(abs(mmh3.hash(ngram)) % max_index, count) for (ngram,count) in x])
+                feature_rdd = self.ngram_rdd.mapValues(helper_hash)
 
             else :
                 vocab_map_rdd = self.vocab_map_rdd
