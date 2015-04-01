@@ -168,7 +168,7 @@ def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
     vec = [(ngram,d[ngram]) for ngram in d.keys()]
 
     del(d)
-    gc.collect()
+#    gc.collect()
 
     return vec
 
@@ -595,7 +595,6 @@ class SparkDocumentVectorizer(object) :
             if self._hashing :
                 feature_rdd = self.ngram_rdd.mapValues(
                     lambda x: [(abs(mmh3.hash(ngram)) % max_index, count) for (ngram,count) in x])
-                feature_rdd.count()
 
             else :
                 vocab_map_rdd = self.vocab_map_rdd
