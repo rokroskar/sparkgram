@@ -20,7 +20,43 @@ def make_csr_matrix(features, max_index) :
     
     if len(indices) > 0 : 
         return csr_matrix((values, (np.zeros(len(indices)), indices)), shape=(1,max_index+1))
-     
+
+class ColumnStats(object) : 
+    """Column statistics for python RDDs with sparse matrices"""
+
+    def __init__(self, rdd) :
+        self._rdd = rdd
+        self._mean = None
+        self._norm = None
+        self._std = None
+
+    @property
+    def mean(self) :
+        if self._mean is None: 
+            res = rdd.reduce(np.add)
+            self._mean = res
+        return self._mean
+
+    @property
+    def norm(self) : 
+        if self._norm is None:
+            res = rdd.map(square_csr).reduce(np.add)
+            res.data = np.sqrt(res.data)
+            res = reshape_csr_to_array(res)
+            self._norm = res
+        return self._norm
+
+    @property
+    def std(self) : 
+        if self._std is None : 
+            mean = self.mean
+            
+
+def reshape_csr_to_array(csr) : 
+    if csr.shape[1]*8 < (csr.data.nbytes + csr.indptr.nbytes + csr.indices.nbytes) : 
+        csr = csr.toarray().squeeze()
+   return csr 
+
 def calculate_column_stat(rdd, op = 'mean') : 
     """Given an RDD of sparse feature vectors, calculate various quantities
     `rdd` should be an rdd of `scipy.sparse.csr_matrix` 
