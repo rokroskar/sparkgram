@@ -32,13 +32,15 @@ class ColumnStats(object) :
 
     @property
     def mean(self) :
+        rdd = self._rdd
         if self._mean is None: 
             res = rdd.reduce(np.add)
             self._mean = res
-        return self._mean
+        return reshape_csr_to_array(self._mean)
 
     @property
-    def norm(self) : 
+    def norm(self) :
+        rdd = self._rdd
         if self._norm is None:
             res = rdd.map(square_csr).reduce(np.add)
             res.data = np.sqrt(res.data)
@@ -48,14 +50,15 @@ class ColumnStats(object) :
 
     @property
     def std(self) : 
+        rdd = self._rdd
         if self._std is None : 
             mean = self.mean
             
-
+            
 def reshape_csr_to_array(csr) : 
     if csr.shape[1]*8 < (csr.data.nbytes + csr.indptr.nbytes + csr.indices.nbytes) : 
         csr = csr.toarray().squeeze()
-   return csr 
+    return csr 
 
 def calculate_column_stat(rdd, op = 'mean') : 
     """Given an RDD of sparse feature vectors, calculate various quantities
