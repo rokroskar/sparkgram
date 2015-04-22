@@ -110,12 +110,13 @@ def online_variance_agg(res1, res2) :
     return res1
     
 class ColumnStatDict(object) : 
-    def __init__(self, valsdict = None, size = None):
+    def __init__(self, valsdict = None, size = None, sample = False):
         if valsdict is None : 
             if size is None : raise RuntimeError('Size must be set')
             valsdict = {'n':0,'nnz':np.zeros(size),'mean':np.zeros(size),'M2':np.zeros(size)}
         self._myvals = valsdict
-        
+        self._sample = sample
+
     def __getitem__(self, key) : 
         return self._myvals[key]
     
@@ -127,12 +128,22 @@ class ColumnStatDict(object) :
         # need to scale M2 to account for the zeros that change the means
         vals = self._myvals
         n, nnz, mean, M2 = [vals[key] for key in ['n','nnz','mean','M2']]
-        M2_final = M2 + mean**2 * nnz**2 / (n**2 - n)
-        return np.sqrt(M2_final/(n-1))
+#        M2_final = M2 + mean**2 * nnz**2 / (n**2 - n)
+        M2_final = M2 + mean * mean * nnz * (n - nnz) / n
+        if self._sample : 
+            return np.sqrt(M2_final/(n-1))
+        else : 
+            return np.sqrt(M2_final/(n))
+        
 
     @property
     def mean(self):
         return self['mean'] * self['nnz'] / self['n']
+
+    def transform(self, vec) :
+        std = self.std
+        std[std == 0.0] = 1.0
+        return vec / std
 
 
 def reshape_csr_to_array(csr) : 
