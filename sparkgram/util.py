@@ -128,8 +128,8 @@ class ColumnStatDict(object) :
         # need to scale M2 to account for the zeros that change the means
         vals = self._myvals
         n, nnz, mean, M2 = [vals[key] for key in ['n','nnz','mean','M2']]
-#        M2_final = M2 + mean**2 * nnz**2 / (n**2 - n)
-        M2_final = M2 + mean * mean * nnz * (n - nnz) / n
+#        M2_final = M2 + mean**2 * nnz**2 / (n**2 - n) # this should be equivalent to the line below but it isnt...
+        M2_final = M2 + mean * mean * nnz * (n - nnz) / n # this is taken from the spark implementation
         if self._sample : 
             return np.sqrt(M2_final/(n-1))
         else : 
