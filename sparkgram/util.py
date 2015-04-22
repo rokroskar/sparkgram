@@ -96,16 +96,17 @@ def online_variance_agg(res1, res2) :
     mean = res1['mean']
     M2 = res1['M2']
     
-    nnz = res1['nnz']
-    nnz +=  res2['nnz']
-    nnz_ind = nnz.nonzero() # use only non-zero elements to avoid division by zero
-
+    other_nnz = res2['nnz'].nonzero() # use only non-zero elements to avoid division by zero
     delta = res2['mean'] - res1['mean']
-    mean[nnz_ind] += delta[nnz_ind]*res2['nnz'][nnz_ind]/nnz[nnz_ind]
-    M2[nnz_ind] += res2['M2'][nnz_ind] + delta[nnz_ind]**2*res1['nnz'][nnz_ind]*res2['nnz'][nnz_ind]/nnz[nnz_ind]
 
-    res1['var'] = np.nan_to_num(M2/(nnz -1))
+    tot_nnz = res1['nnz'][other_nnz] + res2['nnz'][other_nnz]
 
+    mean[other_nnz] += delta[other_nnz] * res2['nnz'][other_nnz] / tot_nnz
+
+    M2[other_nnz] += res2['M2'][other_nnz] + delta[other_nnz]**2 * res1['nnz'][other_nnz] * res2['nnz'][other_nnz] / tot_nnz
+
+    res1['nnz'][other_nnz] = tot_nnz
+    
     return res1
     
 class ColumnStatDict(object) : 
