@@ -88,7 +88,6 @@ def online_variance(stats, vec_iter) :
         delta = data - mean[indices]
         mean[indices] += delta/nnz[indices]
         M2[indices] += delta*(data - mean[indices])
-        print data, mean, delta, M2
         
     return ColumnStatDict({'n':n, 'nnz':nnz, 'mean':mean, 'M2':M2})
 
