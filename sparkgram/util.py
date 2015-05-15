@@ -183,3 +183,34 @@ def add_arrays(arr1, arr2) :
         if res.shape[1]*8 < (res.data.nbytes + res.indptr.nbytes + res.indices.nbytes) : 
             return res.toarray()
     return res
+
+
+from bisect import bisect_left
+
+class TopNgramsAggregator(object) :
+    
+    def __init__(self, N, filt = None) :
+        self.N = N
+        self.filt = filt
+        self.result = []
+        self.min = 0
+        self.max = 1e99
+        
+    def add_new_value(self, val) : 
+        ngram, count = val
+        new_val = (count, ngram)
+        
+        if count > self.min : 
+            new_pos = bisect_left(map(lambda x: x[0], self.result), count)
+            self.result.insert(new_pos, new_val)
+            if len(self.result) > self.N :
+                self.result = self.result[-self.N:]
+        return self
+    
+    def merge_other_result(self, other_result) : 
+        self.result.extend(other_result.result)
+        new_res = set(self.result)
+        new_res = list(new_res)
+        new_res.sort(reverse=True)
+        self.result = new_res[:self.N]
+        return self
