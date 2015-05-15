@@ -200,11 +200,12 @@ class TopNgramsAggregator(object) :
         ngram, count = val
         new_val = (count, ngram)
         
-        if count > self.min : 
+        if count >= self.min : 
             new_pos = bisect_left(map(lambda x: x[0], self.result), count)
             self.result.insert(new_pos, new_val)
             if len(self.result) > self.N :
                 self.result = self.result[-self.N:]
+            self.min = self.result[0][0]
         return self
     
     def merge_other_result(self, other_result) : 
