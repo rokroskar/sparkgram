@@ -210,6 +210,9 @@ class SparkDocumentVectorizer(object) :
 
     *ngram_range*: a tuple with min, max ngrams to generate
 
+    *vocab*: a list of vocabulary words -- if specified, only these words are used, otherwise 
+    a vocabulary is constructed from the corpus
+
     *stop_words*: a list of stop words to use
 
     *nmin/nmax*: minimum occurence count to use in filtering
@@ -225,12 +228,13 @@ class SparkDocumentVectorizer(object) :
 
 
     def __init__(self, sc, doclist,
-                 ngram_range = [1,1], stop_words = None, nmin = None, nmax = None,
+                 ngram_range = [1,1], vocab = None, stop_words = None, nmin = None, nmax = None,
                  num_partitions = None, features_max = None, tokenizer = alpha_tokenizer,
                  hashing = False, load_path = None, hdfs_namenode = None) :
 
         self._sc = sc
         self._ngram_range = ngram_range
+        self._vocab = vocab
         self._stop_words = stop_words
         self._nmin = nmin
         self._nmax = nmax
@@ -514,11 +518,17 @@ class SparkDocumentVectorizer(object) :
         stop_words = self._stop_words
         features_max = self._features_max
         tokenizer = self._tokenizer
+        vocab = self._vocab
 
         if self._ngram_rdd is None :
-            self._ngram_rdd = self.doc_rdd.mapValues(
-                lambda x: ngram_frequency(x, ngram_range,
-                                          stop_words, tokenizer))
+            if vocab is None : 
+                self._ngram_rdd = self.doc_rdd.mapValues(
+                    lambda x: ngram_frequency(x, ngram_range,
+                                              stop_words, tokenizer))
+            else : 
+                self._ngram_rdd = self.doc_rdd.mapValues(
+                    lambda x: ngram_vocab_frequency(vocab, x, ngram_range,
+                                              stop_words, tokenizer))
 
             self._finalize_rdd(self._ngram_rdd, 'ngram_rdd')
 
@@ -569,9 +579,25 @@ class SparkDocumentVectorizer(object) :
         except KeyError : 
             pass
 
-
+    
     @property
     def docvec_rdd(self) :
+        """
+        RDD of vectors representing the ngram counts
+        """
+        self._docvec_rdd = self._check_rdd('docvec_rdd')
+        max_index = self._features_max
+        num_partitions = self._num_partitions
+        hashing = self._hashing
+
+        if self._docvec_rdd is None :
+            self._docvec_rdd = self.form_docvec_rdd(self.ngram_rdd, vocab_map_rdd = self.vocab_map_rdd if not hashing else None, num_partitions = None)
+            self._finalize_rdd(self._docvec_rdd, 'docvec_rdd')
+
+        return self._docvec_rdd
+
+    @staticmethod
+    def form_docvec_rdd(ngram_rdd, vocab_map_rdd, num_partitions = None) : 
         """
         Extract the document feature matrix
 
@@ -580,43 +606,36 @@ class SparkDocumentVectorizer(object) :
         be just a random index, or some other more meaningful data so that
         the list can later be turned into a (LabeledPoint, SparseVector)
         list that can be passed to MLlib, for example.
+
+        Subclasses can override this method to alter the way that the docvec_rdd is created.
         """
-        self._docvec_rdd = self._check_rdd('docvec_rdd')
-        
-        max_index = self._features_max
 
-        num_partitions = self._num_partitions
+        # The vectors are [[(metadata),[(ngram,ngram_ID),count],[...]]]
+        # We want to have [[(metadata),SparseVector[(ngram_ID,count),...]]], i.e.
+        # just IDs and counts, no ngram string
 
-        if self._docvec_rdd is None :
-            # The vectors are [[(metadata),[(ngram,ngram_ID),count],[...]]]
-            # We want to have [[(metadata),SparseVector[(ngram_ID,count),...]]], i.e.
-            # just IDs and counts, no ngram string
+        def helper_hash(ngrams): 
+            return [((mmh3.hash(ngram) & 0xffffffff) % max_index, count) for (ngram,count) in ngrams]
 
-            def helper_hash(ngrams): 
-                 return [((mmh3.hash(ngram) & 0xffffffff) % max_index, count) for (ngram,count) in ngrams]
-                
-            if self._hashing :
-                feature_rdd = self.ngram_rdd.mapValues(helper_hash)
-
-            else :
-                vocab_map_rdd = self.vocab_map_rdd
-                max_index = vocab_map_rdd.values().max()
-                
+        if num_partitions is None: 
+            num_partitions = ngram_rdd.ctx.defaultParallelism
+               
+        if vocab_map_rdd is None:
+            feature_rdd = self.ngram_rdd.mapValues(helper_hash)
+     
+        else :
+            max_index = vocab_map_rdd.values().max()
+            
                 # make an rdd of (ngram,(context,count)) pairs so we can join with vocabulary map rdd
-                inv_ngram_rdd = self.ngram_rdd.flatMap(lambda (context,ngrams) : [(ngram,(context,count)) for (ngram,count) in ngrams])
-                
+            inv_ngram_rdd = ngram_rdd.flatMap(lambda (context,ngrams) : [(ngram,(context,count)) for (ngram,count) in ngrams])
+            
                 # perform the join and map into (context, (id,count)) then group by context
-                feature_rdd = inv_ngram_rdd.join(vocab_map_rdd)\
-                                           .map(lambda (ngram, ((context, count),id)):
-                                                    (context, (id,count))).groupByKey(num_partitions)
-                    
-            self._docvec_rdd = feature_rdd.mapValues(make_csr_matrix_index(max_index))
-
-            self._finalize_rdd(self._docvec_rdd, 'docvec_rdd')
-
-        return self._docvec_rdd
-
-
+            feature_rdd = inv_ngram_rdd.join(vocab_map_rdd).map(lambda (ngram, ((context, count),id)): 
+                                                                (context, (id,count))).groupByKey(num_partitions)
+                
+        return feature_rdd.mapValues(make_csr_matrix_index(max_index))
+        
+                
     @docvec_rdd.setter
     def docvec_rdd(self, value) : 
         self._docvec_rdd = value
