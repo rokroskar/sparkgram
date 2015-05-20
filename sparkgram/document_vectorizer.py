@@ -124,14 +124,14 @@ def ngram_vocab_frequency(vocab, text, ngram_range = [1,1],
         if ngram in vocab :
             d[ngram] += 1
 
-    # extract the results into a list of tuples and sort by feature index
+    # extract the results into a list of tuples 
     res = [(vocab[ngram],d[ngram]) for ngram in d.keys()]
     res.sort()
 
     return res
 
 
-def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
+def ngram_frequency(text, ngram_range=[1,1], vocab = None, stop_words = None,
                     tokenizer = alpha_tokenizer) :
     """
     Count the frequency of ngrams appearing in document ``text``
@@ -155,12 +155,15 @@ def ngram_frequency(text, ngram_range=[1,1], stop_words = None,
 
     """
     from collections import defaultdict
-
+    from itertools import ifilter 
     d = defaultdict(int)
 
     tokens = tokenizer(text)
 
     ngrams = word_ngrams(tokens, ngram_range = ngram_range, stop_words = stop_words)
+
+    if vocab is not None : 
+        ngrams = ifilter(lambda ngram: ngram in vocab, ngrams)
 
     # count the occurences
     for ngram in ngrams:
@@ -256,6 +259,14 @@ class SparkDocumentVectorizer(object) :
         # initialize other properties
         self._nfeatures = None
         self._hashing = hashing
+
+        # make the vocabulary a set if it isn't one already
+        if type(vocab) is not set and vocab is not None: 
+            try: 
+                self._vocab = set(vocab)
+            except TypeError : 
+                raise TypeError("Vocabulary must be an iterable like a list, set, etc.")
+
 
         if load_path is not None : 
             if load_path[:4] != 'hdfs' : 
@@ -521,14 +532,10 @@ class SparkDocumentVectorizer(object) :
         vocab = self._vocab
 
         if self._ngram_rdd is None :
-            if vocab is None : 
-                self._ngram_rdd = self.doc_rdd.mapValues(
+            self._ngram_rdd = self.doc_rdd.mapValues(
                     lambda x: ngram_frequency(x, ngram_range,
-                                              stop_words, tokenizer))
-            else : 
-                self._ngram_rdd = self.doc_rdd.mapValues(
-                    lambda x: ngram_vocab_frequency(vocab, x, ngram_range,
-                                              stop_words, tokenizer))
+                                              vocab, stop_words, tokenizer))
+          
 
             self._finalize_rdd(self._ngram_rdd, 'ngram_rdd')
 
@@ -558,12 +565,17 @@ class SparkDocumentVectorizer(object) :
         num_partitions, nmin, nmax = self._num_partitions, self._nmin, self._nmax
 
         self._vocab_rdd = self._check_rdd('vocab_rdd')
-
         if self._vocab_rdd is None :
-            self._vocab_rdd = self.ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x]) \
-                                  .map(lambda x: (x,None)) \
-                                  .reduceByKey(lambda x,_: x, num_partitions) \
-                                  .map(lambda (x,_): x)
+            vocab = self._vocab
+
+            if vocab is not None : 
+                self._vocab_rdd = self._sc.parallelize(vocab)
+            
+            else : 
+                self._vocab_rdd = self.ngram_rdd.flatMap(lambda (_,x): [y[0] for y in x]) \
+                                                                       .map(lambda x: (x,None)) \
+                                                                       .reduceByKey(lambda x,_: x, num_partitions) \
+                                                                       .map(lambda (x,_): x)
 
             self._finalize_rdd(self._vocab_rdd, 'vocab_rdd')
 
