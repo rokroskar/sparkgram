@@ -282,11 +282,17 @@ class SparkDocumentVectorizer(object) :
                     raise ImportError("package snakebite is required for working with HDFS: pip install snakebite")
                 
                 if hdfs_namenode is None : 
-                    # assume defaults --> localhost and port 8020 for the hdfs namenode
-                    import socket
-                    hdfs_namenode = socket.gethostname()
+                    # get the hadoop configuration files from user's environment and extract namenode 
+                    import xml
+                    hadoop_conf = '%s/core-site.xml'%os.environ['HADOOP_CONF_DIR']
+                    tree = xml.etree.ElementTree.parse(hadoop_conf)
+                    for prop in tree.findall('property') : 
+                        if prop.find('name').text == 'fs.defaultFS' : 
+                            dummy, hdfs_namenode, hdfs_port = prop.find('value').text.split(':')
+                            hdfs_namenode = hdfs_namenode[2:]                            
+                            break
  
-                client = Client(hdfs_namenode, 8020)
+                client = Client(hdfs_namenode, int(hdfs_port))
                 for rdd_path_dict in client.ls([load_path[7:]]) : 
                     rdd_name = rdd_path_dict['path'].split('/')[-1]
                     if rdd_name[-3:] == 'rdd': 
